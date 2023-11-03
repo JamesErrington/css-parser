@@ -99,13 +99,14 @@ func preprocess_byte_stream(bytes []byte) []rune {
 	for i := 0; i < len(bytes); {
 		bite := bytes[i]
 		i += 1
-
+		// Unicode characters are up to 4 bytes wide
 		code_point := make([]byte, 0, 4)
 		code_point = append(code_point, bite)
-
+		// Use the marker bits to detect if this is a multibyte character
 		if is_multibyte_start(bite) {
 			for ; i < len(bytes); i += 1 {
 				next_byte := bytes[i]
+				// Keep appending bytes if they are marked as part of the multibyte character
 				if is_multibyte_body(next_byte) {
 					code_point = append(code_point, next_byte)
 				} else {
@@ -283,7 +284,7 @@ func are_start_ident(first rune, second rune, third rune) bool {
 // https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
 func (t *Tokenizer) starts_with_ident() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
-	return are_start_ident(t.CurrentRune(), t.NextRune(), t.PeekRune(2))
+	return are_start_ident(t.CurrentRune(), t.NextRune(), t.SecondRune())
 }
 
 // Check if three code points would start a number.
@@ -317,7 +318,7 @@ func are_number(first rune, second rune, third rune) bool {
 
 func (t *Tokenizer) starts_with_number() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
-	return are_number(t.CurrentRune(), t.NextRune(), t.PeekRune(2))
+	return are_number(t.CurrentRune(), t.NextRune(), t.SecondRune())
 }
 
 // https://www.w3.org/TR/css-syntax-3/#convert-string-to-number
@@ -631,7 +632,7 @@ func (t *Tokenizer) NextToken() Token {
 		}
 
 		// Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->), consume them and return a <CDC-token>.
-		if t.NextRune() == HYPHEN_MINUS_CHAR && t.PeekRune(2) == GREATER_THAN_CHAR {
+		if t.NextRune() == HYPHEN_MINUS_CHAR && t.SecondRune() == GREATER_THAN_CHAR {
 			t.ConsumeRunes(2)
 			return Token{kind: CDC_TOKEN}
 		}
@@ -663,7 +664,7 @@ func (t *Tokenizer) NextToken() Token {
 	// U+003C LESS-THAN SIGN (<)
 	case char == LESS_THAN_CHAR:
 		// If the next 3 input code points are U+0021 EXCLAMATION MARK U+002D HYPHEN-MINUS U+002D HYPHEN-MINUS (!--), consume them and return a <CDO-token>.
-		first, second, third := t.NextRune(), t.PeekRune(2), t.PeekRune(3)
+		first, second, third := t.NextRune(), t.SecondRune(), t.ThirdRune()
 		if first == EXCLAMATON_MARK_CHAR && second == HYPHEN_MINUS_CHAR && third == HYPHEN_MINUS_CHAR {
 			t.ConsumeRunes(3)
 			return Token{kind: CDO_TOKEN}
@@ -675,7 +676,7 @@ func (t *Tokenizer) NextToken() Token {
 	case char == AT_CHAR:
 		// If the next 3 input code points would start an ident sequence,
 		// consume an ident sequence, create an <at-keyword-token> with its value set to the returned value, and return it.
-		if t.starts_with_ident() {
+		if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
 			return Token{kind: AT_KEYWORD_TOKEN, value: t.consume_ident_sequence()}
 		}
 
@@ -724,46 +725,47 @@ func (t *Tokenizer) NextToken() Token {
 	}
 }
 
-// The last code point to have been consumed.
-func (t *Tokenizer) CurrentRune() rune {
-	if t.index >= t.length {
-		return EOF_CHAR
-	}
-
-	return t.input[t.index]
-}
-
-// The first code point in the input stream that has not yet been consumed.
-func (t *Tokenizer) NextRune() rune {
-	index := t.index + 1
-	if index >= t.length {
-		return EOF_CHAR
-	}
-
-	return t.input[index]
-}
-
-func (t *Tokenizer) ConsumeRune() {
-	t.ConsumeRunes(1)
-}
-
-func (t *Tokenizer) ConsumeRunes(number int) {
-	t.index += number
-}
-
-// Push the current input code point back onto the front of the input stream, so that the next time you are instructed to consume the next input code point,
-// it will instead reconsume the current input code point.
-func (t *Tokenizer) ReconsumeRune() {
-	t.ConsumeRunes(-1)
-}
-
-func (t *Tokenizer) PeekRune(number int) rune {
+func (t *Tokenizer) peek_rune(number int) rune {
 	index := t.index + number
 	if index >= t.length {
 		return EOF_CHAR
 	}
 
 	return t.input[index]
+}
+
+// The last code point to have been consumed.
+func (t *Tokenizer) CurrentRune() rune {
+	return t.peek_rune(0)
+}
+
+// The first code point in the input stream that has not yet been consumed.
+func (t *Tokenizer) NextRune() rune {
+	return t.peek_rune(1)
+}
+
+// The code point in the input stream immediately after the next rune.
+func (t *Tokenizer) SecondRune() rune {
+	return t.peek_rune(2)
+}
+
+// // The code point in the input stream immediately after the second rune.
+func (t *Tokenizer) ThirdRune() rune {
+	return t.peek_rune(3)
+}
+
+func (t *Tokenizer) ConsumeRunes(number int) {
+	t.index += number
+}
+
+func (t *Tokenizer) ConsumeRune() {
+	t.ConsumeRunes(1)
+}
+
+// Push the current input code point back onto the front of the input stream, so that the next time you are instructed to consume the next input code point,
+// it will instead reconsume the current input code point.
+func (t *Tokenizer) ReconsumeRune() {
+	t.ConsumeRunes(-1)
 }
 
 // https://www.w3.org/TR/css-syntax-3/#consume-comment
@@ -775,7 +777,7 @@ func (t *Tokenizer) consume_comments() {
 	// If the preceding paragraph ended by consuming an EOF code point, this is a parse error.
 	// Return nothing.
 
-	for t.NextRune() == FORWARD_SLASH_CHAR && t.PeekRune(2) == ASTERISK_CHAR {
+	for t.NextRune() == FORWARD_SLASH_CHAR && t.SecondRune() == ASTERISK_CHAR {
 		t.ConsumeRunes(2)
 		for {
 			if t.CurrentRune() == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR {
@@ -908,11 +910,11 @@ func (t *Tokenizer) consume_escaped() rune {
 
 func (t *Tokenizer) consume_hash() Token {
 	// If the next input code point is an ident code point or the next two input code points are a valid escape
-	if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.PeekRune(2)) {
+	if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.SecondRune()) {
 		// Create a <hash-token>.
 		token := Token{kind: HASH_TOKEN}
 		// If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
-		if are_start_ident(t.NextRune(), t.PeekRune(2), t.PeekRune(3)) {
+		if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
 			token.hash_flag = HASH_ID
 		}
 		// Consume an ident sequence, and set the <hash-token>’s value to the returned string.
@@ -962,7 +964,7 @@ func (t *Tokenizer) consume_numeric_token() Token {
 	// Consume a number and let number be the result.
 	number, type_flag := t.consume_number()
 	// If the next 3 input code points would start an ident sequence, then:
-	if are_start_ident(t.NextRune(), t.PeekRune(2), t.PeekRune(3)) {
+	if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
 		// 1. Create a <dimension-token> with the same value and type flag as number, and a unit set initially to the empty string.
 		token := Token{kind: DIMENSION_TOKEN, numeric: number, type_flag: type_flag, unit: nil}
 		// 2. Consume an ident sequence. Set the <dimension-token>’s unit to the returned value.
@@ -1004,10 +1006,10 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag) {
 	}
 
 	// 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit, then:
-	if t.NextRune() == FULL_STOP_CHAR && is_digit(t.PeekRune(2)) {
+	if t.NextRune() == FULL_STOP_CHAR && is_digit(t.SecondRune()) {
 		// Consume them.
 		// Append them to repr.
-		repr = append(repr, t.NextRune(), t.PeekRune(2))
+		repr = append(repr, t.NextRune(), t.SecondRune())
 		t.ConsumeRunes(2)
 		// Set type to "number".
 		type_flag = TYPE_NUMBER
@@ -1020,7 +1022,7 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag) {
 
 	// 5. If the next 2 or 3 input code points are U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
 	//    optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+), followed by a digit
-	first, second, third := t.NextRune(), t.PeekRune(2), t.PeekRune(3)
+	first, second, third := t.NextRune(), t.SecondRune(), t.ThirdRune()
 	target := 2
 	if first == UPPER_E_CHAR || first == LOWER_E_CHAR {
 		if second == HYPHEN_MINUS_CHAR || second == PLUS_SIGN_CHAR {
@@ -1060,13 +1062,13 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 	if strings.EqualFold(string(str), "url") && t.NextRune() == OPEN_PAREN_CHAR {
 		t.ConsumeRune()
 		// While the next two input code points are whitespace, consume the next input code point.
-		for is_whitespace(t.NextRune()) && is_whitespace(t.PeekRune(2)) {
+		for is_whitespace(t.NextRune()) && is_whitespace(t.SecondRune()) {
 			t.ConsumeRune()
 		}
 		// If the next one or two input code points are U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('),
 		// or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE ('),
 		// then create a <function-token> with its value set to string and return it.
-		first, second := t.NextRune(), t.PeekRune(2)
+		first, second := t.NextRune(), t.SecondRune()
 		switch {
 		case first == QUOTATION_MARK_CHAR:
 			fallthrough

@@ -1,6 +1,9 @@
+@import url("https://www.example.com/style.css");
+
 #selector {
     height: 100px;
     width: 58.75%;
+    /* Hello Mum */
     display: flex;
     background-image: url('http://foo.com');
     font-family: \C7 elikfont;
