@@ -222,8 +222,11 @@ func is_non_printable(char rune) bool {
 	// or U+007F DELETE.
 	switch {
 	case char >= NULL_CHAR && char <= BACKSPACE_CHAR:
+		fallthrough
 	case char == LINE_TABULATION_CHAR:
+		fallthrough
 	case char >= SHIFT_OUT_CHAR && char <= INFORMATION_SEPARATOR_CHAR:
+		fallthrough
 	case char == DELETE_CHAR:
 		return true
 	}
@@ -1066,8 +1069,11 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 		first, second := t.NextRune(), t.PeekRune(2)
 		switch {
 		case first == QUOTATION_MARK_CHAR:
+			fallthrough
 		case first == APOSTROPHE_CHAR:
+			fallthrough
 		case is_whitespace(first) && second == QUOTATION_MARK_CHAR:
+			fallthrough
 		case is_whitespace(first) && second == APOSTROPHE_CHAR:
 			return Token{kind: FUNCTION_TOKEN, value: str}
 		// Otherwise, consume a url token, and return it.
@@ -1138,8 +1144,11 @@ func (t *Tokenizer) consume_url_token() Token {
 			}
 		// U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('), U+0028 LEFT PARENTHESIS ((), non-printable code point
 		case char == QUOTATION_MARK_CHAR:
+			fallthrough
 		case char == APOSTROPHE_CHAR:
+			fallthrough
 		case char == OPEN_PAREN_CHAR:
+			fallthrough
 		case is_non_printable(char):
 			// This is a parse error. Consume the remnants of a bad url, create a <bad-url-token>, and return it.
 			fmt.Printf("Parse Error: Unexpected character '%x' while parsing URL\n", char)
@@ -1176,8 +1185,9 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 
 		char := t.CurrentRune()
 		switch {
-		// U+0029 RIGHT PARENTHESIS ())
+		// U+0029 RIGHT PARENTHESIS ()), EOF
 		case char == CLOSE_PAREN_CHAR:
+			fallthrough
 		case char == EOF_CHAR:
 			return
 		// the input stream starts with a valid escape

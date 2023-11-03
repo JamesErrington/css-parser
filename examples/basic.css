@@ -2,6 +2,6 @@
     height: 100px;
     width: 58.75%;
     display: flex;
-    background-image: url("http://foo.com");
+    background-image: url('http://foo.com');
     font-family: \C7 elikfont;
 }
