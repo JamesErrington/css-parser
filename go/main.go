@@ -74,22 +74,24 @@ func main() {
 	}
 	defer file.Close()
 
-	bytes, err := io.ReadAll(file)
-	if err != nil {
-		log.Fatal(err)
-	}
+	ParseStylesheet(file)
 
-	input := preprocess_byte_stream(bytes)
-	tokenizer := Tokenizer{input: input, length: len(input), index: -1}
+	// bytes, err := io.ReadAll(file)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	var tokens []Token
-	for tokenizer.HasNext() {
-		tokens = append(tokens, tokenizer.NextToken())
-	}
+	// input := preprocess_byte_stream(bytes)
+	// tokenizer := Tokenizer{input: input, length: len(input), index: -1}
 
-	for i, token := range tokens {
-		fmt.Printf("[%d]: %s\n", i, token.ToString())
-	}
+	// var tokens []Token
+	// for tokenizer.HasNext() {
+	// 	tokens = append(tokens, tokenizer.NextToken())
+	// }
+
+	// for i, token := range tokens {
+	// 	fmt.Printf("[%d]: %s\n", i, token.ToString())
+	// }
 }
 
 // https://www.w3.org/TR/css-syntax-3/#input-preprocessing
@@ -437,6 +439,14 @@ type Tokenizer struct {
 	index  int
 }
 
+func NewTokenizer(input []rune) *Tokenizer {
+	return &Tokenizer{
+		input:  input,
+		length: len(input),
+		index:  -1,
+	}
+}
+
 type TokenType uint8
 
 // https://www.w3.org/TR/css-syntax-3/#tokenization
@@ -467,6 +477,77 @@ const (
 	CLOSE_CURLY_TOKEN
 	EOF_TOKEN
 )
+
+func token_type_name(kind TokenType) string {
+	switch kind {
+	case IDENT_TOKEN:
+		return "IDENT_TOKEN"
+	case FUNCTION_TOKEN:
+		return "FUNCTION_TOKEN"
+	case AT_KEYWORD_TOKEN:
+		return "AT_KEYWORD_TOKEN"
+	case HASH_TOKEN:
+		return "HASH_TOKEN"
+	case STRING_TOKEN:
+		return "STRING_TOKEN"
+	case BAD_STRING_TOKEN:
+		return "BAD_STRING_TOKEN"
+	case URL_TOKEN:
+		return "URL_TOKEN"
+	case BAD_URL_TOKEN:
+		return "BAD_URL_TOKEN"
+	case DELIM_TOKEN:
+		return "DELIM_TOKEN"
+	case NUMBER_TOKEN:
+		return "NUMBER_TOKEN"
+	case PERCENTAGE_TOKEN:
+		return "PERCENTAGE_TOKEN"
+	case DIMENSION_TOKEN:
+		return "DIMENSION_TOKEN"
+	case WHITESPACE_TOKEN:
+		return "WHITESPACE_TOKEN"
+	case CDO_TOKEN:
+		return "CDO_TOKEN"
+	case CDC_TOKEN:
+		return "CDC_TOKEN"
+	case COLON_TOKEN:
+		return "COLON_TOKEN"
+	case SEMICOLON_TOKEN:
+		return "SEMICOLON_TOKEN"
+	case COMMA_TOKEN:
+		return "COMMA_TOKEN"
+	case OPEN_SQUARE_TOKEN:
+		return "OPEN_SQUARE_TOKEN"
+	case CLOSE_SQUARE_TOKEN:
+		return "CLOSE_SQUARE_TOKEN"
+	case OPEN_PAREN_TOKEN:
+		return "OPEN_PAREN_TOKEN"
+	case CLOSE_PAREN_TOKEN:
+		return "CLOSE_PAREN_TOKEN"
+	case OPEN_CURLY_TOKEN:
+		return "OPEN_CURLY_TOKEN"
+	case CLOSE_CURLY_TOKEN:
+		return "CLOSE_CURLY_TOKEN"
+	case EOF_TOKEN:
+		return "EOF_TOKEN"
+	}
+
+	return ""
+}
+
+func mirror(kind TokenType) TokenType {
+	switch kind {
+	case OPEN_SQUARE_TOKEN:
+		return CLOSE_SQUARE_TOKEN
+	case OPEN_PAREN_TOKEN:
+		return CLOSE_PAREN_TOKEN
+	case OPEN_CURLY_TOKEN:
+		return CLOSE_CURLY_TOKEN
+	default:
+		log.Panicf("Invalid call to mirror with TokenType '%d'", kind)
+		return EOF_TOKEN
+	}
+}
 
 type HashFlag uint8
 
@@ -500,64 +581,9 @@ type Token struct {
 }
 
 func (t Token) ToString() string {
-	var type_string string
-
 	kind := t.kind
-	switch kind {
-	case IDENT_TOKEN:
-		type_string = "IDENT_TOKEN"
-	case FUNCTION_TOKEN:
-		type_string = "FUNCTION_TOKEN"
-	case AT_KEYWORD_TOKEN:
-		type_string = "AT_KEYWORD_TOKEN"
-	case HASH_TOKEN:
-		type_string = "HASH_TOKEN"
-	case STRING_TOKEN:
-		type_string = "STRING_TOKEN"
-	case BAD_STRING_TOKEN:
-		type_string = "BAD_STRING_TOKEN"
-	case URL_TOKEN:
-		type_string = "URL_TOKEN"
-	case BAD_URL_TOKEN:
-		type_string = "BAD_URL_TOKEN"
-	case DELIM_TOKEN:
-		type_string = "DELIM_TOKEN"
-	case NUMBER_TOKEN:
-		type_string = "NUMBER_TOKEN"
-	case PERCENTAGE_TOKEN:
-		type_string = "PERCENTAGE_TOKEN"
-	case DIMENSION_TOKEN:
-		type_string = "DIMENSION_TOKEN"
-	case WHITESPACE_TOKEN:
-		type_string = "WHITESPACE_TOKEN"
-	case CDO_TOKEN:
-		type_string = "CDO_TOKEN"
-	case CDC_TOKEN:
-		type_string = "CDC_TOKEN"
-	case COLON_TOKEN:
-		type_string = "COLON_TOKEN"
-	case SEMICOLON_TOKEN:
-		type_string = "SEMICOLON_TOKEN"
-	case COMMA_TOKEN:
-		type_string = "COMMA_TOKEN"
-	case OPEN_SQUARE_TOKEN:
-		type_string = "OPEN_SQUARE_TOKEN"
-	case CLOSE_SQUARE_TOKEN:
-		type_string = "CLOSE_SQUARE_TOKEN"
-	case OPEN_PAREN_TOKEN:
-		type_string = "OPEN_PAREN_TOKEN"
-	case CLOSE_PAREN_TOKEN:
-		type_string = "CLOSE_PAREN_TOKEN"
-	case OPEN_CURLY_TOKEN:
-		type_string = "OPEN_CURLY_TOKEN"
-	case CLOSE_CURLY_TOKEN:
-		type_string = "CLOSE_CURLY_TOKEN"
-	case EOF_TOKEN:
-		type_string = "EOF_TOKEN"
-	}
 
-	// return fmt.Sprintf("<%s> (%s) (%f) (%s)", type_string, string(t.value), t.numeric, string(t.unit))
-	str := fmt.Sprintf("<%s>", type_string)
+	str := fmt.Sprintf("<%s>", token_type_name(kind))
 
 	if kind == IDENT_TOKEN || kind == FUNCTION_TOKEN || kind == AT_KEYWORD_TOKEN || kind == HASH_TOKEN || kind == STRING_TOKEN || kind == URL_TOKEN || kind == DELIM_TOKEN {
 		str = str + fmt.Sprintf(" '%s'", string(t.value))
@@ -1198,6 +1224,377 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 			// @NOTE: This allows an escaped right parenthesis ("\)") to be encountered without ending the <bad-url-token>.
 			//        This is otherwise identical to the "anything else" clause.
 			t.consume_escaped()
+		}
+	}
+}
+
+type Parser struct {
+	tokens    []Token
+	length    int
+	index     int
+	reconsume bool
+}
+
+func NewParser(tokens []Token) *Parser {
+	return &Parser{
+		tokens:    tokens,
+		length:    len(tokens),
+		index:     -1,
+		reconsume: false,
+	}
+}
+
+type ParserOutputType uint8
+
+// https://www.w3.org/TR/css-syntax-3/#parsing
+const (
+	AT_RULE ParserOutputType = iota
+	// Most qualified rules will be style rules, where the prelude is a selector [SELECT] and the block a list of declarations.
+	QUALIFIED_RULE
+	DECLARATION
+	PRESERVED_TOKEN
+	FUNCTION
+	SIMPLE_BLOCK
+)
+
+type ParserOutput struct {
+	kind ParserOutputType
+	// <at-rule>, <declaration>, <function>
+	name []rune
+	// <at-rule>, <qualified-rule>
+	prelude []ParserOutput
+	// <at-rule> (optional), <qualified-rule>
+	block *ParserOutput
+	// <declaration>, <function>, <simple-block>
+	value []ParserOutput
+	// <declaration>
+	important bool
+	// <preserved-token>, <simple-block>
+	token Token
+}
+
+func (p ParserOutput) ToString() string {
+	kind := p.kind
+
+	var type_string string
+	switch kind {
+	case AT_RULE:
+		type_string = "AT_RULE"
+	case QUALIFIED_RULE:
+		type_string = "QUALIFIED_RULE"
+	case DECLARATION:
+		type_string = "DECLARATION"
+	case PRESERVED_TOKEN:
+		type_string = "PRESERVED_TOKEN"
+	case FUNCTION:
+		type_string = "FUNCTION"
+	case SIMPLE_BLOCK:
+		type_string = "SIMPLE_BLOCK"
+	}
+
+	str := fmt.Sprintf("<%s>", type_string)
+
+	if kind == AT_RULE || kind == DECLARATION || kind == FUNCTION {
+		str = str + fmt.Sprintf(" '%s'", string(p.name))
+	}
+
+	if kind == AT_RULE || kind == QUALIFIED_RULE {
+		str = str + "\n\tprelude: ("
+		for _, item := range p.prelude {
+			str = str + fmt.Sprintf("%s, ", item.ToString())
+		}
+	}
+
+	if kind == AT_RULE || kind == QUALIFIED_RULE {
+		if p.block != nil {
+			str = str + fmt.Sprintf("\n\tblock: %s", p.block.ToString())
+		}
+	}
+
+	if kind == DECLARATION || kind == FUNCTION || kind == SIMPLE_BLOCK {
+		str = str + "\n\t\tvalue:\n"
+		for _, item := range p.value {
+			str = str + fmt.Sprintf("\t\t\t%s,\n ", item.ToString())
+		}
+	}
+
+	if kind == PRESERVED_TOKEN || kind == SIMPLE_BLOCK {
+		str = str + fmt.Sprintf(" token: %s", p.token.ToString())
+	}
+
+	return str
+}
+
+func (p *Parser) peek_token(number int) Token {
+	index := p.index + number
+	// If there isn’t a token following the current input token, the next input token is an <EOF-token>.
+	if index >= p.length {
+		return Token{kind: EOF_TOKEN}
+	}
+
+	return p.tokens[index]
+}
+
+// The token or component value currently being operated on, from the list of tokens produced by the tokenizer.
+func (p *Parser) CurrentToken() Token {
+	return p.peek_token(0)
+}
+
+// The token or component value following the current input token in the list of tokens produced by the tokenizer.
+func (p *Parser) NextToken() Token {
+	return p.peek_token(1)
+}
+
+func (p *Parser) consume_token(number int) {
+	p.index += number
+}
+
+// Let the current input token be the current next input token, adjusting the next input token accordingly.
+func (p *Parser) ConsumeNext() {
+	if p.reconsume == false {
+		p.consume_token(1)
+	}
+
+	p.reconsume = false
+}
+
+// The next time an algorithm instructs you to consume the next input token, instead do nothing (retain the current input token unchanged).
+func (p *Parser) ReconsumeCurrent() {
+	p.reconsume = true
+}
+
+func ParseStylesheet(input io.Reader) {
+	bytes, err := io.ReadAll(input)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stream := preprocess_byte_stream(bytes)
+	tokenizer := NewTokenizer(stream)
+
+	var tokens []Token
+	for tokenizer.HasNext() {
+		tokens = append(tokens, tokenizer.NextToken())
+	}
+
+	parser := NewParser(tokens)
+	output := parser.consume_rules_list(true)
+	for i, elem := range output {
+		fmt.Printf("[%d]: %s\n", i, elem.ToString())
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-list-of-rules
+func (p *Parser) consume_rules_list(top_level bool) []ParserOutput {
+	// Create an initially empty list of rules.
+	var rules []ParserOutput
+
+	// Repeatedly consume the next input token:
+	for {
+		p.ConsumeNext()
+
+		token := p.CurrentToken()
+		switch token.kind {
+		// <whitespace-token>
+		case WHITESPACE_TOKEN:
+			// Do nothing
+			continue
+		// <EOF-token>
+		case EOF_TOKEN:
+			// Return the list of rules.
+			return rules
+		// <CDO-token>, <CDC-token>
+		case CDO_TOKEN:
+			fallthrough
+		case CDC_TOKEN:
+			// If the top-level flag is set, do nothing.
+			if top_level {
+				continue
+			}
+
+			// Otherwise, reconsume the current input token. Consume a qualified rule. If anything is returned, append it to the list of rules.
+			p.ReconsumeCurrent()
+			rule, ok := p.consume_qualified_rule()
+			if ok {
+				rules = append(rules, rule)
+			}
+		// <at-keyword-token>
+		case AT_KEYWORD_TOKEN:
+			// Reconsume the current input token. Consume an at-rule, and append the returned value to the list of rules.
+			p.ReconsumeCurrent()
+			rules = append(rules, p.consume_at_rule())
+		// anything else
+		default:
+			// Reconsume the current input token. Consume a qualified rule. If anything is returned, append it to the list of rules.
+			p.ReconsumeCurrent()
+			rule, ok := p.consume_qualified_rule()
+			if ok {
+				rules = append(rules, rule)
+			}
+		}
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-qualified-rule
+func (p *Parser) consume_qualified_rule() (ParserOutput, bool) {
+	// Create a new qualified rule with its prelude initially set to an empty list, and its value initially set to nothing.
+	rule := ParserOutput{kind: QUALIFIED_RULE, prelude: nil, value: nil}
+	// Repeatedly consume the next input token:
+	for {
+		p.ConsumeNext()
+
+		token := p.CurrentToken()
+		switch {
+		// <EOF-token>
+		case token.kind == EOF_TOKEN:
+			// This is a parse error. Return nothing.
+			fmt.Println("Parse Error: Unexpected EOF when parsing qualified rule")
+			return rule, false
+		// <{-token>
+		case token.kind == OPEN_CURLY_TOKEN:
+			// Consume a simple block and assign it to the qualified rule’s block. Return the qualified rule.
+			block := p.consume_simple_block()
+			rule.block = &block
+			return rule, true
+		// @FIXME: work out how this works
+		// simple block with an associated token of <{-token>
+		// case false:
+		// 	// Assign the block to the qualified rule’s block. Return the qualified rule.
+		// 	rule.block = 0
+		// 	return rule, true
+		// anything else
+		default:
+			// Reconsume the current input token. Consume a component value. Append the returned value to the qualified rule’s prelude.
+			p.ReconsumeCurrent()
+			rule.prelude = append(rule.prelude, p.consume_component_value())
+		}
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+func (p *Parser) consume_at_rule() ParserOutput {
+	// Consume the next input token.
+	p.ConsumeNext()
+	// Create a new at-rule with its name set to the value of the current input token,
+	// its prelude initially set to an empty list, and its value initially set to nothing.
+	rule := ParserOutput{kind: AT_RULE, name: p.CurrentToken().value, prelude: nil, value: nil}
+
+	// Repeatedly consume the next input token:
+	for {
+		p.ConsumeNext()
+
+		token := p.CurrentToken()
+		switch {
+		// <semicolon-token>
+		case token.kind == SEMICOLON_TOKEN:
+			// Return the at-rule.
+			return rule
+		// <EOF-token>
+		case token.kind == EOF_TOKEN:
+			// This is a parse error. Return the at-rule.
+			fmt.Println("Parse Error: Unexpected EOF when parsing at rule")
+			return rule
+		// <{-token>
+		case token.kind == OPEN_CURLY_TOKEN:
+			// Consume a simple block and assign it to the at-rule’s block. Return the at-rule.
+			block := p.consume_simple_block()
+			rule.block = &block
+			return rule
+		// @FIXME: work out how this works
+		// simple block with an associated token of <{-token>
+		// case false:
+		// 	// Assign the block to the at-rule’s block. Return the at-rule.
+		// 	rule.block = 0
+		// 	return rule
+		// anything else
+		default:
+			// Reconsume the current input token. Consume a component value. Append the returned value to the at-rule’s prelude.
+			p.ReconsumeCurrent()
+			rule.prelude = append(rule.prelude, p.consume_component_value())
+		}
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-simple-block
+func (p *Parser) consume_simple_block() ParserOutput {
+	// @ASSERTION: This algorithm assumes that the current input token has already been checked to be an <{-token>, <[-token>, or <(-token>.
+
+	current := p.CurrentToken()
+	// The ending token is the mirror variant of the current input token. (E.g. if it was called with <[-token>, the ending token is <]-token>.)
+	ending_type := mirror(current.kind)
+	// Create a simple block with its associated token set to the current input token and with its value initially set to an empty list.
+	block := ParserOutput{kind: SIMPLE_BLOCK, token: current, value: nil}
+	// Repeatedly consume the next input token and process it as follows:
+	for {
+		p.ConsumeNext()
+
+		token := p.CurrentToken()
+		switch token.kind {
+		// ending token
+		case ending_type:
+			// Return the block.
+			return block
+		// <EOF-token>
+		case EOF_TOKEN:
+			// This is a parse error. Return the block.
+			fmt.Println("Parse Error: Unexpected EOF when parsing simple block")
+			return block
+		// anything else
+		default:
+			// Reconsume the current input token. Consume a component value and append it to the value of the block.
+			p.ReconsumeCurrent()
+			block.value = append(block.value, p.consume_component_value())
+		}
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-component-value
+func (p *Parser) consume_component_value() ParserOutput {
+	// Consume the next input token.
+	p.ConsumeNext()
+	// If the current input token is a <{-token>, <[-token>, or <(-token>, consume a simple block and return it.
+	switch p.CurrentToken().kind {
+	case OPEN_CURLY_TOKEN:
+		fallthrough
+	case OPEN_SQUARE_TOKEN:
+		fallthrough
+	case OPEN_PAREN_TOKEN:
+		return p.consume_simple_block()
+	// Otherwise, if the current input token is a <function-token>, consume a function and return it.
+	case FUNCTION_TOKEN:
+		return p.consume_function()
+	// Otherwise, return the current input token.
+	default:
+		return ParserOutput{kind: PRESERVED_TOKEN, token: p.CurrentToken()}
+	}
+}
+
+// https://www.w3.org/TR/css-syntax-3/#consume-function
+func (p *Parser) consume_function() ParserOutput {
+	// @ASSERTION: This algorithm assumes that the current input token has already been checked to be a <function-token>.
+
+	// Create a function with its name equal to the value of the current input token and with its value initially set to an empty list.
+	function := ParserOutput{kind: FUNCTION, name: p.CurrentToken().value, value: nil}
+	// Repeatedly consume the next input token
+	for {
+		p.ConsumeNext()
+
+		token := p.CurrentToken()
+		switch token.kind {
+		// <)-token>
+		case CLOSE_PAREN_TOKEN:
+			// Return the function.
+			return function
+		// <EOF-token>
+		case EOF_TOKEN:
+			// This is a parse error. Return the function.
+			fmt.Println("Parse Error: Unexpected EOF when parsing function")
+			return function
+		// anything else
+		default:
+			// Reconsume the current input token. Consume a component value and append the returned value to the function’s value.
+			p.ReconsumeCurrent()
+			function.value = append(function.value, p.consume_component_value())
 		}
 	}
 }
