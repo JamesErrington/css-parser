@@ -8,13 +8,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
+)
+
+type Encoding uint8
+
+const (
+	UTF_8 Encoding = iota
 )
 
 const (
 	// https://unicodebook.readthedocs.io/unicode_encodings.html#utf-8
-	MULTIBYTE_START_MARKER = 0b11000000
-	MULTIBYTE_BODY_MARKER  = 0b10000000
+	UTF_8_MULTIBYTE_START_MARKER = 0b11000000
+	UTF_8_MULTIBYTE_BODY_MARKER  = 0b10000000
+	// https://drafts.csswg.org/css-syntax/#maximum-allowed-code-point
 	// The greatest code point defined by Unicode: U+10FFFF.
 	MAX_CODE_POINT int64 = 0x10FFFF
 )
@@ -94,8 +102,48 @@ func main() {
 	// }
 }
 
-// https://www.w3.org/TR/css-syntax-3/#input-preprocessing
-func preprocess_byte_stream(bytes []byte) []rune {
+// https://drafts.csswg.org/css-syntax/#input-preprocessing
+func preprocess_input_stream(bytes []byte) []rune {
+	// @TODO: determine the encoding from the byte stream instead of only supporting UTF-8
+	// https://drafts.csswg.org/css-syntax/#input-byte-stream
+	runes := decode_byte_stream(bytes, UTF_8)
+	length := len(runes)
+
+	// The input stream consists of the filtered code points pushed into it as the input byte stream is decoded.
+	// @NOTE: Here, we fully decode the byte stream first, before we filter the code points.
+	input := make([]rune, 0, length)
+	for i := 0; i < length; i += 1 {
+		char := runes[i]
+
+		switch char {
+		// Replace any U+000D CARRIAGE RETURN (CR), U+000C FORM FEED (FF) code points,
+		// or pairs of U+000D CARRIAGE RETURN (CR) followed by U+000A LINE FEED (LF) in input
+		// by a single U+000A LINE FEED (LF) code point.
+		case CARRIAGE_RETURN_CHAR:
+			char = LINE_FEED_CHAR
+			if i < length-1 && runes[i+1] == LINE_FEED_CHAR {
+				i += 1
+			}
+		case FORM_FEED_CHAR:
+			char = LINE_FEED_CHAR
+		// Replace any U+0000 NULL or surrogate code points in input with U+FFFD REPLACEMENT CHARACTER (�).
+		// @NOTE: We don't support utf16 encoding so there can be no surrogate code points
+		case NULL_CHAR:
+			char = REPLACEMENT_CHAR
+		}
+
+		input = append(input, char)
+	}
+
+	return input
+}
+
+// @NOTE: We currently only decode into UTF-8
+func decode_byte_stream(bytes []byte, encoding Encoding) []rune {
+	if encoding != UTF_8 {
+		log.Fatalf("UTF-8 is currently the only supported encoding")
+	}
+
 	result := make([]rune, 0, len(bytes))
 
 	for i := 0; i < len(bytes); {
@@ -119,42 +167,21 @@ func preprocess_byte_stream(bytes []byte) []rune {
 
 		char, _ := utf8.DecodeRune(code_point)
 		if char == utf8.RuneError {
-			log.Fatalf("Invalid UTF-8 encoding: %v", bytes)
+			log.Fatalf("Invalid UTF-8 encoding: %v", code_point)
 		}
 
-		char = filter_code_point(char)
 		result = append(result, char)
 	}
 
 	return result
 }
 
-// https://www.w3.org/TR/css-syntax-3/#input-preprocessing
-func filter_code_point(char rune) rune {
-	switch char {
-	// Replace any
-	// U+000D CARRIAGE RETURN (CR) code points,
-	// U+000C FORM FEED (FF) code points,
-	// or pairs of U+000D CARRIAGE RETURN (CR) followed by U+000A LINE FEED (LF) in input
-	// by a single U+000A LINE FEED (LF) code point.
-	// @NOTE: We currently don't merge the CR LF into a single LF, instead emitting LF LF
-	case FORM_FEED_CHAR, CARRIAGE_RETURN_CHAR:
-		return LINE_FEED_CHAR
-	// Replace any U+0000 NULL or surrogate code points in input with U+FFFD REPLACEMENT CHARACTER (�).
-	// @NOTE: We don't support utf16 encoding so there can be no surrogate code points
-	case NULL_CHAR:
-		return REPLACEMENT_CHAR
-	default:
-		return char
-	}
-}
-
 func is_multibyte_start(bite byte) bool {
-	return bite&MULTIBYTE_START_MARKER == MULTIBYTE_START_MARKER
+	return bite&UTF_8_MULTIBYTE_START_MARKER == UTF_8_MULTIBYTE_START_MARKER
 }
 
 func is_multibyte_body(bite byte) bool {
-	return bite&MULTIBYTE_BODY_MARKER == MULTIBYTE_BODY_MARKER
+	return bite&UTF_8_MULTIBYTE_BODY_MARKER == UTF_8_MULTIBYTE_BODY_MARKER
 }
 
 func is_newline(char rune) bool {
@@ -165,18 +192,19 @@ func is_newline(char rune) bool {
 	return char == LINE_FEED_CHAR
 }
 
+// https://drafts.csswg.org/css-syntax/#whitespace
 func is_whitespace(char rune) bool {
-	// newline,
-	// U+0009 CHARACTER TABULATION,
-	// or U+0020 SPACE.
+	// newline, U+0009 CHARACTER TABULATION, or U+0020 SPACE.
 	return is_newline(char) || char == TAB_CHAR || char == SPACE_CHAR
 }
 
+// https://drafts.csswg.org/css-syntax/#digit
 func is_digit(char rune) bool {
 	// A code point between U+0030 DIGIT ZERO (0) and U+0039 DIGIT NINE (9) inclusive.
 	return char >= '0' && char <= '9'
 }
 
+// https://drafts.csswg.org/css-syntax/#hex-digit
 func is_hex_digit(char rune) bool {
 	// A digit,
 	// or a code point between U+0041 LATIN CAPITAL LETTER A (A) and U+0046 LATIN CAPITAL LETTER F (F) inclusive,
@@ -184,40 +212,72 @@ func is_hex_digit(char rune) bool {
 	return is_digit(char) || (char >= 'A' && char <= 'F') || (char >= 'a' && char <= 'f')
 }
 
+// https://drafts.csswg.org/css-syntax/#uppercase-letter
 func is_uppercase(char rune) bool {
 	// A code point between U+0041 LATIN CAPITAL LETTER A (A) and U+005A LATIN CAPITAL LETTER Z (Z) inclusive.
 	return char >= 'A' && char <= 'Z'
 }
 
+// https://drafts.csswg.org/css-syntax/#lowercase-letter
 func is_lowercase(char rune) bool {
 	// A code point between U+0061 LATIN SMALL LETTER A (a) and U+007A LATIN SMALL LETTER Z (z) inclusive.
 	return char >= 'a' && char <= 'z'
 }
 
+// https://drafts.csswg.org/css-syntax/#letter
 func is_letter(char rune) bool {
 	// An uppercase letter or a lowercase letter.
 	return is_uppercase(char) || is_lowercase(char)
 }
 
+// https://drafts.csswg.org/css-syntax/#non-ascii-ident-code-point
 func is_non_ascii(char rune) bool {
-	// A code point with a value equal to or greater than U+0080 <control>.
-	return char > CONTROL_CHAR
+	// A code point whose value is any of:
+	switch char {
+	case '\u00B7', '\u200C', '\u200D', '\u203F', '\u2040':
+		return true
+	}
+
+	// Or in any of these ranges (inclusive):
+	switch {
+	case char >= '\u00C0' && char <= '\u00D6':
+		fallthrough
+	case char >= '\u00D8' && char <= '\u00F6':
+		fallthrough
+	case char >= '\u00F8' && char <= '\u037D':
+		fallthrough
+	case char >= '\u037F' && char <= '\u1FFF':
+		fallthrough
+	case char >= '\u2070' && char <= '\u218F':
+		fallthrough
+	case char >= '\u2C00' && char <= '\u2FEF':
+		fallthrough
+	case char >= '\u3001' && char <= '\uD7FF':
+		fallthrough
+	case char >= '\uF900' && char <= '\uFDCF':
+		fallthrough
+	case char >= '\uFDF0' && char <= '\uFFFD':
+		fallthrough
+	case char >= 0x10000:
+		return true
+	}
+
+	return false
 }
 
+// https://drafts.csswg.org/css-syntax/#ident-start-code-point
 func is_ident_start(char rune) bool {
-	// A letter,
-	// a non-ASCII code point,
-	// or U+005F LOW LINE (_).
+	// A letter, a non-ASCII code point, or U+005F LOW LINE (_).
 	return is_letter(char) || is_non_ascii(char) || char == LOW_LINE_CHAR
 }
 
+// https://drafts.csswg.org/css-syntax/#ident-code-point
 func is_ident(char rune) bool {
-	// An ident-start code point,
-	// a digit,
-	// or U+002D HYPHEN-MINUS (-).
+	// An ident-start code point, a digit, or U+002D HYPHEN-MINUS (-).
 	return is_ident_start(char) || is_digit(char) || char == HYPHEN_MINUS_CHAR
 }
 
+// https://drafts.csswg.org/css-syntax/#non-printable-code-point
 func is_non_printable(char rune) bool {
 	// A code point between U+0000 NULL and U+0008 BACKSPACE inclusive,
 	// or U+000B LINE TABULATION,
@@ -238,7 +298,7 @@ func is_non_printable(char rune) bool {
 }
 
 // Check if two code points are a valid escape.
-// https://www.w3.org/TR/css-syntax-3/#starts-with-a-valid-escape
+// https://drafts.csswg.org/css-syntax/#starts-with-a-valid-escape
 func are_valid_escape(first rune, second rune) bool {
 	// @ASSERTION: This algorithm will not consume any additional code point.
 
@@ -252,14 +312,14 @@ func are_valid_escape(first rune, second rune) bool {
 	return is_newline(second) == false
 }
 
-// https://www.w3.org/TR/css-syntax-3/#starts-with-a-valid-escape
+// https://drafts.csswg.org/css-syntax/#starts-with-a-valid-escape
 func (t *Tokenizer) starts_with_valid_escape() bool {
 	// The two code points in question are the current input code point and the next input code point, in that order.
 	return are_valid_escape(t.CurrentRune(), t.NextRune())
 }
 
 // Check if three code points would start an ident sequence.
-// https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
+// https://drafts.csswg.org/css-syntax/#would-start-an-identifier
 func are_start_ident(first rune, second rune, third rune) bool {
 	// @ASSERTION: This algorithm will not consume any additional code points.
 
@@ -278,19 +338,20 @@ func are_start_ident(first rune, second rune, third rune) bool {
 	case first == BACKWARD_SLASH_CHAR:
 		// If the first and second code points are a valid escape, return true. Otherwise, return false.
 		return are_valid_escape(first, second)
+	// anything else
 	default:
 		return false
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
+// https://drafts.csswg.org/css-syntax/#would-start-an-identifier
 func (t *Tokenizer) starts_with_ident() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
 	return are_start_ident(t.CurrentRune(), t.NextRune(), t.SecondRune())
 }
 
 // Check if three code points would start a number.
-// https://www.w3.org/TR/css-syntax-3/#starts-with-a-number
+// https://drafts.csswg.org/css-syntax/#starts-with-a-number
 func are_number(first rune, second rune, third rune) bool {
 	// @ASSERTION: This algorithm will not consume any additional code points.
 
@@ -318,120 +379,121 @@ func are_number(first rune, second rune, third rune) bool {
 	}
 }
 
+// https://drafts.csswg.org/css-syntax/#starts-with-a-number
 func (t *Tokenizer) starts_with_number() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
 	return are_number(t.CurrentRune(), t.NextRune(), t.SecondRune())
 }
 
 // https://www.w3.org/TR/css-syntax-3/#convert-string-to-number
-func convert_string_to_number(repr []rune) float64 {
-	// @NOTE: This algorithm does not do any verification to ensure that the string contains only a number.
-	//        Ensure that the string contains only a valid CSS number before calling this algorithm.
+// func convert_string_to_number(repr []rune) float64 {
+// 	// @NOTE: This algorithm does not do any verification to ensure that the string contains only a number.
+// 	//        Ensure that the string contains only a valid CSS number before calling this algorithm.
 
-	// Divide the string into seven components, in order from left to right
-	index := 0
-	length := len(repr)
+// 	// Divide the string into seven components, in order from left to right
+// 	index := 0
+// 	length := len(repr)
 
-	// 1. A sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
-	//    Let s be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let s be the number 1.
-	s := 1
+// 	// 1. A sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
+// 	//    Let s be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let s be the number 1.
+// 	s := 1
 
-	switch repr[index] {
-	case HYPHEN_MINUS_CHAR:
-		s = -1
-		index += 1
-	case PLUS_SIGN_CHAR:
-		index += 1
-	}
+// 	switch repr[index] {
+// 	case HYPHEN_MINUS_CHAR:
+// 		s = -1
+// 		index += 1
+// 	case PLUS_SIGN_CHAR:
+// 		index += 1
+// 	}
 
-	// 2. An integer part: zero or more digits.
-	//    If there is at least one digit, let i be the number formed by interpreting the digits as a base-10 integer;
-	//    otherwise, let i be the number 0.
-	i := 0
+// 	// 2. An integer part: zero or more digits.
+// 	//    If there is at least one digit, let i be the number formed by interpreting the digits as a base-10 integer;
+// 	//    otherwise, let i be the number 0.
+// 	i := 0
 
-	start_index := index
-	for index < length && is_digit(repr[index]) {
-		index += 1
-	}
+// 	start_index := index
+// 	for index < length && is_digit(repr[index]) {
+// 		index += 1
+// 	}
 
-	if index > start_index {
-		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
+// 	if index > start_index {
+// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
 
-		i = int(value)
-	}
+// 		i = int(value)
+// 	}
 
-	// 3. A decimal point: a single U+002E FULL STOP (.), or the empty string.
-	if index < length && repr[index] == FULL_STOP_CHAR {
-		index += 1
-	}
+// 	// 3. A decimal point: a single U+002E FULL STOP (.), or the empty string.
+// 	if index < length && repr[index] == FULL_STOP_CHAR {
+// 		index += 1
+// 	}
 
-	// 4. A fractional part: zero or more digits.
-	//    If there is at least one digit, let f be the number formed by interpreting the digits as a base-10 integer and d be the number of digits;
-	//    otherwise, let f and d be the number 0.
-	f := 0
-	d := 0
+// 	// 4. A fractional part: zero or more digits.
+// 	//    If there is at least one digit, let f be the number formed by interpreting the digits as a base-10 integer and d be the number of digits;
+// 	//    otherwise, let f and d be the number 0.
+// 	f := 0
+// 	d := 0
 
-	start_index = index
-	for index < length && is_digit(repr[index]) {
-		index += 1
-	}
+// 	start_index = index
+// 	for index < length && is_digit(repr[index]) {
+// 		index += 1
+// 	}
 
-	if index > start_index {
-		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
+// 	if index > start_index {
+// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
 
-		f = int(value)
-		d = index - start_index
-	}
+// 		f = int(value)
+// 		d = index - start_index
+// 	}
 
-	// 5. An exponent indicator: a single U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e), or the empty string.
-	if index < length && (repr[index] == UPPER_E_CHAR || repr[index] == LOWER_E_CHAR) {
-		index += 1
-	}
+// 	// 5. An exponent indicator: a single U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e), or the empty string.
+// 	if index < length && (repr[index] == UPPER_E_CHAR || repr[index] == LOWER_E_CHAR) {
+// 		index += 1
+// 	}
 
-	// 6. An exponent sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
-	//    Let t be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let t be the number 1.
-	t := 0
+// 	// 6. An exponent sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
+// 	//    Let t be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let t be the number 1.
+// 	t := 0
 
-	if index < length {
-		switch repr[index] {
-		case HYPHEN_MINUS_CHAR:
-			t = -1
-			index += 1
-		case PLUS_SIGN_CHAR:
-			index += 1
-		}
-	}
+// 	if index < length {
+// 		switch repr[index] {
+// 		case HYPHEN_MINUS_CHAR:
+// 			t = -1
+// 			index += 1
+// 		case PLUS_SIGN_CHAR:
+// 			index += 1
+// 		}
+// 	}
 
-	// 7. An exponent: zero or more digits.
-	//    If there is at least one digit, let e be the number formed by interpreting the digits as a base-10 integer;
-	//    otherwise, let e be the number 0.
-	e := 0
+// 	// 7. An exponent: zero or more digits.
+// 	//    If there is at least one digit, let e be the number formed by interpreting the digits as a base-10 integer;
+// 	//    otherwise, let e be the number 0.
+// 	e := 0
 
-	start_index = index
-	for index < length && is_digit(repr[index]) {
-		index += 1
-	}
+// 	start_index = index
+// 	for index < length && is_digit(repr[index]) {
+// 		index += 1
+// 	}
 
-	if index > start_index {
-		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-		if err != nil {
-			log.Fatal(err)
-		}
+// 	if index > start_index {
+// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
 
-		e = int(value)
-	}
+// 		e = int(value)
+// 	}
 
-	// Return the number s·(i + f·10^(-d))·10^(te).
-	exponent := math.Pow10(t * e)
-	fraction := float64(f) * math.Pow10(-1*d)
-	return float64(s) * (float64(i) + fraction) * exponent
-}
+// 	// Return the number s·(i + f·10^(-d))·10^(te).
+// 	exponent := math.Pow10(t * e)
+// 	fraction := float64(f) * math.Pow10(-1*d)
+// 	return float64(s) * (float64(i) + fraction) * exponent
+// }
 
 type Tokenizer struct {
 	input  []rune
@@ -449,7 +511,7 @@ func NewTokenizer(input []rune) *Tokenizer {
 
 type TokenType uint8
 
-// https://www.w3.org/TR/css-syntax-3/#tokenization
+// https://drafts.csswg.org/css-syntax/#tokenization
 const (
 	IDENT_TOKEN TokenType = iota
 	FUNCTION_TOKEN
@@ -463,6 +525,7 @@ const (
 	NUMBER_TOKEN
 	PERCENTAGE_TOKEN
 	DIMENSION_TOKEN
+	UNICODE_RANGE_TOKEN
 	WHITESPACE_TOKEN
 	CDO_TOKEN
 	CDC_TOKEN
@@ -504,6 +567,8 @@ func token_type_name(kind TokenType) string {
 		return "PERCENTAGE_TOKEN"
 	case DIMENSION_TOKEN:
 		return "DIMENSION_TOKEN"
+	case UNICODE_RANGE_TOKEN:
+		return "UNICODE_RANGE_TOKEN"
 	case WHITESPACE_TOKEN:
 		return "WHITESPACE_TOKEN"
 	case CDO_TOKEN:
@@ -565,6 +630,7 @@ const (
 	TYPE_NUMBER
 )
 
+// https://drafts.csswg.org/css-syntax/#tokenization
 type Token struct {
 	kind TokenType
 	// <ident-token>, <function-token>, <at-keyword-token>, <hash-token>, <string-token>, and <url-token> have a value composed of zero or more code points.
@@ -572,12 +638,19 @@ type Token struct {
 	value []rune
 	// <number-token>, <percentage-token>, and <dimension-token> have a numeric value.
 	numeric float64
+	// <number-token>, <percentage-token>, and <dimension-token> have an optional sign character set to either "+" or "-" (or nothing).
+	sign []rune
 	// <hash-token> have a type flag set to either "id" or "unrestricted".
 	hash_flag HashFlag
 	// <number-token> and <dimension-token> additionally have a type flag set to either "integer" or "number".
 	type_flag TypeFlag
 	// <dimension-token> additionally have a unit composed of one or more code points.
 	unit []rune
+	// <unicode-range-token> has a starting and ending code point.
+	// It represents an inclusive range of codepoints (including both the start and end).
+	// If the ending code point is before the starting code point, it represents an empty range.
+	range_start rune
+	range_end   rune
 }
 
 func (t Token) ToString() string {
@@ -611,14 +684,14 @@ func (t *Tokenizer) HasNext() bool {
 func (t *Tokenizer) NextToken() Token {
 	t.consume_comments()
 
-	t.ConsumeRune()
+	t.ConsumeNext()
 
 	char := t.CurrentRune()
 	switch {
 	case is_whitespace(char):
 		// Consume as much whitespace as possible.
 		for is_whitespace(t.NextRune()) {
-			t.ConsumeRune()
+			t.ConsumeNext()
 		}
 		// Return a <whitespace-token>.
 		return Token{kind: WHITESPACE_TOKEN}
@@ -627,7 +700,22 @@ func (t *Tokenizer) NextToken() Token {
 		return t.consume_string_token_default()
 	// U+0023 NUMBER SIGN (#)
 	case char == NUMBER_SIGN_CHAR:
-		return t.consume_hash()
+		// If the next input code point is an ident code point or the next two input code points are a valid escape
+		if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.SecondRune()) {
+			// Create a <hash-token>.
+			token := Token{kind: HASH_TOKEN}
+			// If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
+			if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
+				token.hash_flag = HASH_ID
+			}
+			// Consume an ident sequence, and set the <hash-token>’s value to the returned string.
+			token.value = t.consume_ident_sequence()
+			// Return the <hash-token>.
+			return token
+		}
+
+		// Otherwise, return a <delim-token> with its value set to the current input code point.
+		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
 	// U+0027 APOSTROPHE (')
 	case char == APOSTROPHE_CHAR:
 		return t.consume_string_token_default()
@@ -761,11 +849,13 @@ func (t *Tokenizer) peek_rune(number int) rune {
 }
 
 // The last code point to have been consumed.
+// https://drafts.csswg.org/css-syntax/#current-input-code-point
 func (t *Tokenizer) CurrentRune() rune {
 	return t.peek_rune(0)
 }
 
 // The first code point in the input stream that has not yet been consumed.
+// https://drafts.csswg.org/css-syntax/#next-input-code-point
 func (t *Tokenizer) NextRune() rune {
 	return t.peek_rune(1)
 }
@@ -780,21 +870,23 @@ func (t *Tokenizer) ThirdRune() rune {
 	return t.peek_rune(3)
 }
 
-func (t *Tokenizer) ConsumeRunes(number int) {
+func (t *Tokenizer) ConsumeRunes(number int) rune {
 	t.index += number
+	return t.CurrentRune()
 }
 
-func (t *Tokenizer) ConsumeRune() {
-	t.ConsumeRunes(1)
+func (t *Tokenizer) ConsumeNext() rune {
+	return t.ConsumeRunes(1)
 }
 
 // Push the current input code point back onto the front of the input stream, so that the next time you are instructed to consume the next input code point,
 // it will instead reconsume the current input code point.
+// https://drafts.csswg.org/css-syntax/#reconsume-the-current-input-code-point
 func (t *Tokenizer) ReconsumeRune() {
 	t.ConsumeRunes(-1)
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-comment
+// https://drafts.csswg.org/css-syntax/#consume-comment
 func (t *Tokenizer) consume_comments() {
 	// If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*),
 	// consume them and all following code points up to and including the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/),
@@ -806,22 +898,22 @@ func (t *Tokenizer) consume_comments() {
 	for t.NextRune() == FORWARD_SLASH_CHAR && t.SecondRune() == ASTERISK_CHAR {
 		t.ConsumeRunes(2)
 		for {
-			if t.CurrentRune() == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR {
+			char := t.ConsumeNext()
+			switch {
+			case char == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR:
 				t.ConsumeRunes(2)
 				break
-			} else if t.CurrentRune() == EOF_CHAR {
+			case char == EOF_CHAR:
 				log.Fatal("Parse Error: Unexpected EOF when parsing comment")
-			} else {
-				t.ConsumeRunes(1)
 			}
 		}
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-string-token
+// This algorithm may be called with an `ending` code point, which denotes the code point that ends the string.
+// https://drafts.csswg.org/css-syntax/#consume-string-token
 func (t *Tokenizer) consume_string_token(ending rune) Token {
-	// It returns either a <string-token> or <bad-string-token>.
-	// This algorithm may be called with an ending code point, which denotes the code point that ends the string.
+	// Returns either a <string-token> or <bad-string-token>.
 
 	// Initially create a <string-token> with its value set to the empty string.
 	token := Token{kind: STRING_TOKEN, value: nil}
@@ -835,7 +927,6 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 		// ending code point:
 		case char == ending:
 			// Return the <string-token>.
-			// t.ConsumeRunes(1)
 			return token
 		// EOF
 		case char == EOF_CHAR:
@@ -855,10 +946,10 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 			if next != EOF_CHAR {
 				// Otherwise, if the next input code point is a newline, consume it.
 				if is_newline(next) {
-					t.ConsumeRunes(2)
+					t.ConsumeNext()
 				} else {
 					// Otherwise, consume an escaped code point and append the returned code point to the <string-token>’s value.
-					// @ASSERTED: (the stream starts with a valid escape)
+					// @ASSERTED: the stream starts with a valid escape
 					token.value = append(token.value, t.consume_escaped())
 				}
 			}
@@ -869,43 +960,39 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 	}
 }
 
+// https://drafts.csswg.org/css-syntax/#consume-string-token
 func (t *Tokenizer) consume_string_token_default() Token {
 	// If an ending code point is not specified, the current input code point is used.
 	return t.consume_string_token(t.CurrentRune())
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
+// https://drafts.csswg.org/css-syntax/#consume-escaped-code-point
 func (t *Tokenizer) consume_escaped() rune {
-	// It assumes that the U+005C REVERSE SOLIDUS (\) has already been consumed
+	// Assume that the U+005C REVERSE SOLIDUS (\) has already been consumed
 	// and that the next input code point has already been verified to be part of a valid escape.
-	// It will return a code point.
+	// Returns a code point.
 
 	// Consume the next input code point.
-	t.ConsumeRune()
-	char := t.CurrentRune()
+	char := t.ConsumeNext()
 	switch {
-	// hex digit:
+	// hex digit
 	case is_hex_digit(char):
 		// Consume as many hex digits as possible, but no more than 5.
+		// @Assertion: Note that this means 1-6 hex digits have been consumed in total.
 		digits := make([]rune, 0, 6)
 		digits = append(digits, char)
 
 		for i := 0; i < 5; i += 1 {
-			t.ConsumeRune()
-			digit := t.CurrentRune()
-
-			if is_hex_digit(digit) {
-				digits = append(digits, digit)
+			if is_hex_digit(t.NextRune()) {
+				digits = append(digits, t.ConsumeNext())
 			} else {
-				t.ReconsumeRune()
 				break
 			}
 		}
 
-		// @Assertion: Note that this means 1-6 hex digits have been consumed in total.
 		// If the next input code point is whitespace, consume it as well.
 		if is_whitespace(t.NextRune()) {
-			t.ConsumeRune()
+			t.ConsumeNext()
 		}
 
 		// Interpret the hex digits as a hexadecimal number.
@@ -914,47 +1001,27 @@ func (t *Tokenizer) consume_escaped() rune {
 			log.Fatal(err)
 		}
 
-		// If this number is zero,
-		// or is for a surrogate,
-		// or is greater than the maximum allowed code point,
+		// If this number is zero, or is for a surrogate, or is greater than the maximum allowed code point,
 		// return U+FFFD REPLACEMENT CHARACTER (�).
-		// @NOTE: We don't support utf16 encoding so there can be no surrogate code points
-		if value == 0 || value > MAX_CODE_POINT {
+		if value == 0 || utf16.IsSurrogate(rune(value)) || value > MAX_CODE_POINT {
 			return REPLACEMENT_CHAR
 		}
 
 		// Otherwise, return the code point with that value.
 		return rune(value)
-	// EOF: This is a parse error. Return U+FFFD REPLACEMENT CHARACTER (�).
+	// EOF
 	case char == EOF_CHAR:
+		// This is a parse error. Return U+FFFD REPLACEMENT CHARACTER (�).
 		fmt.Println("Parse Error: Unexpected EOF when parsing escape")
 		return REPLACEMENT_CHAR
+	// anything else
 	default:
-		return char
+		// Return the current input code point.
+		return t.CurrentRune()
 	}
 }
 
-func (t *Tokenizer) consume_hash() Token {
-	// If the next input code point is an ident code point or the next two input code points are a valid escape
-	if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.SecondRune()) {
-		// Create a <hash-token>.
-		token := Token{kind: HASH_TOKEN}
-		// If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
-		if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
-			token.hash_flag = HASH_ID
-		}
-		// Consume an ident sequence, and set the <hash-token>’s value to the returned string.
-		token.value = t.consume_ident_sequence()
-		// Return the <hash-token>.
-		return token
-	}
-
-	// Otherwise, return a <delim-token> with its value set to the current input code point.
-	token := Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
-	return token
-}
-
-// https://www.w3.org/TR/css-syntax-3/#consume-name
+// https://drafts.csswg.org/css-syntax/#consume-name
 func (t *Tokenizer) consume_ident_sequence() []rune {
 	// Returns a string containing the largest name that can be formed from adjacent code points in the stream, starting from the first.
 
@@ -983,99 +1050,113 @@ func (t *Tokenizer) consume_ident_sequence() []rune {
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-numeric-token
+// https://drafts.csswg.org/css-syntax/#consume-numeric-token
 func (t *Tokenizer) consume_numeric_token() Token {
 	// Returns either a <number-token>, <percentage-token>, or <dimension-token>.
 
 	// Consume a number and let number be the result.
-	number, type_flag := t.consume_number()
-	// If the next 3 input code points would start an ident sequence, then:
+	number, type_flag, sign := t.consume_number()
+	// If the next 3 input code points would start an ident sequence
 	if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
-		// 1. Create a <dimension-token> with the same value and type flag as number, and a unit set initially to the empty string.
-		token := Token{kind: DIMENSION_TOKEN, numeric: number, type_flag: type_flag, unit: nil}
+		// 1. Create a <dimension-token> with the same value, type flag, and sign character as number, and a unit set initially to the empty string.
+		token := Token{kind: DIMENSION_TOKEN, numeric: number, type_flag: type_flag, sign: sign, unit: nil}
 		// 2. Consume an ident sequence. Set the <dimension-token>’s unit to the returned value.
 		token.unit = t.consume_ident_sequence()
 		// 3. Return the <dimension-token>.
 		return token
 	}
-
 	// Otherwise, if the next input code point is U+0025 PERCENTAGE SIGN (%), consume it.
-	// Create a <percentage-token> with the same value as number, and return it.
 	if t.NextRune() == PERCENT_SIGN_CHAR {
-		t.ConsumeRune()
+		t.ConsumeNext()
+		// Create a <percentage-token> with the same value as number, and return it.
 		return Token{kind: PERCENTAGE_TOKEN, numeric: number}
 	}
 
-	// Otherwise, create a <number-token> with the same value and type flag as number, and return it.
-	return Token{kind: NUMBER_TOKEN, numeric: number, type_flag: type_flag}
+	// Otherwise, create a <number-token> with the same value, type flag, and sign character as number, and return it.
+	return Token{kind: NUMBER_TOKEN, numeric: number, type_flag: type_flag, sign: sign}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-number
-func (t *Tokenizer) consume_number() (float64, TypeFlag) {
-	// Returns a numeric value, and a type which is either "integer" or "number".
+// https://drafts.csswg.org/css-syntax/#consume-number
+func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
+	// Returns a numeric value, a string type which is either "integer" or "number",
+	// and an optional sign character which is either "+", "-", or missing.
 
-	// 1. Initially set type to "integer". Let repr be the empty string.
+	value := float64(0)
+	// 1. Let type be the string "integer". Let number part and exponent part be the empty string.
 	type_flag := TYPE_INTEGER
-	var repr []rune
-
-	// 2. If the next input code point is U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), consume it and append it to repr.
+	var number_part []rune
+	var exponent_part []rune
+	var sign []rune
+	// 2. If the next input code point is U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), consume it.
 	next := t.NextRune()
 	if next == PLUS_SIGN_CHAR || next == HYPHEN_MINUS_CHAR {
-		t.ConsumeRune()
-		repr = append(repr, next)
+		t.ConsumeNext()
 	}
+	// Append it to number part and set sign character to it.
+	number_part = append(number_part, next)
+	sign = []rune{next}
 
-	// 3. While the next input code point is a digit, consume it and append it to repr.
+	// 3. While the next input code point is a digit, consume it and append it to number part.
 	for is_digit(t.NextRune()) {
-		t.ConsumeRune()
-		repr = append(repr, t.CurrentRune())
+		number_part = append(number_part, t.ConsumeNext())
 	}
 
-	// 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit, then:
+	// 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit
 	if t.NextRune() == FULL_STOP_CHAR && is_digit(t.SecondRune()) {
-		// Consume them.
-		// Append them to repr.
-		repr = append(repr, t.NextRune(), t.SecondRune())
-		t.ConsumeRunes(2)
-		// Set type to "number".
-		type_flag = TYPE_NUMBER
-		// While the next input code point is a digit, consume it and append it to repr.
+		// 4.1 Consume the next input code point and append it to number part.
+		number_part = append(number_part, t.ConsumeNext())
+		// 4.2 While the next input code point is a digit, consume it and append it to number part.
 		for is_digit(t.NextRune()) {
-			t.ConsumeRune()
-			repr = append(repr, t.CurrentRune())
+			number_part = append(number_part, t.ConsumeNext())
 		}
+		// 4.3 Set type to "number".
+		type_flag = TYPE_NUMBER
 	}
 
 	// 5. If the next 2 or 3 input code points are U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
-	//    optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+), followed by a digit
+	//    optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+),
+	//    followed by a digit
 	first, second, third := t.NextRune(), t.SecondRune(), t.ThirdRune()
-	target := 2
+	lookahead := 2
 	if first == UPPER_E_CHAR || first == LOWER_E_CHAR {
 		if second == HYPHEN_MINUS_CHAR || second == PLUS_SIGN_CHAR {
-			target = 3
+			lookahead = 3
 		}
 
-		if (target == 2 && is_digit(second)) || (target == 3 && is_digit(third)) {
-			// 5.1 Consume them.
-			t.ConsumeRunes(target)
-			// 5.2 Append them to repr.
-			repr = append(repr, first, second)
-			if target == 3 {
-				repr = append(repr, third)
+		if (lookahead == 2 && is_digit(second)) || (lookahead == 3 && is_digit(third)) {
+			// 5.1 Consume the next input code point.
+			t.ConsumeNext()
+			// 5.2 If the next input code point is "+" or "-", consume it and append it to exponent part.
+			switch t.NextRune() {
+			case PLUS_SIGN_CHAR, HYPHEN_MINUS_CHAR:
+				exponent_part = append(exponent_part, t.ConsumeNext())
 			}
-			// 5.3 Set type to "number".
-			type_flag = TYPE_NUMBER
-			// 5.4 While the next input code point is a digit, consume it and append it to repr.
+			// 5.3 While the next input code point is a digit, consume it and append it to exponent part.
 			for is_digit(t.NextRune()) {
-				t.ConsumeRune()
-				repr = append(repr, t.CurrentRune())
+				exponent_part = append(exponent_part, t.ConsumeNext())
 			}
+			// 5.4 Set type to "number".
+			type_flag = TYPE_NUMBER
 		}
 	}
-	// 6. Convert repr to a number, and set the value to the returned value.
-	value := convert_string_to_number(repr)
-	// 7. Return value and type.
-	return value, type_flag
+
+	// 6. Let number value be the result of interpreting number part as a base-10 number.
+	number_value, err := strconv.ParseInt(string(number_part), 10, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// If exponent part is non-empty, interpret it as a base-10 integer
+	if len(exponent_part) > 0 {
+		exponent_value, err := strconv.ParseInt(string(exponent_part), 10, 0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Then raise 10 to the power of the result, multiply it by number value, and set value to that result.
+		value = float64(number_value) * math.Pow10(int(exponent_value))
+	}
+
+	// 7. Return value, type, and sign character.
+	return value, type_flag, sign
 }
 
 // https://www.w3.org/TR/css-syntax-3/#consume-ident-like-token
@@ -1086,10 +1167,10 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 	str := t.consume_ident_sequence()
 	// If string’s value is an ASCII case-insensitive match for "url", and the next input code point is U+0028 LEFT PARENTHESIS ((), consume it.
 	if strings.EqualFold(string(str), "url") && t.NextRune() == OPEN_PAREN_CHAR {
-		t.ConsumeRune()
+		t.ConsumeNext()
 		// While the next two input code points are whitespace, consume the next input code point.
 		for is_whitespace(t.NextRune()) && is_whitespace(t.SecondRune()) {
-			t.ConsumeRune()
+			t.ConsumeNext()
 		}
 		// If the next one or two input code points are U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('),
 		// or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE ('),
@@ -1112,7 +1193,7 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 
 	// Otherwise, if the next input code point is U+0028 LEFT PARENTHESIS ((), consume it.
 	if t.NextRune() == OPEN_PAREN_CHAR {
-		t.ConsumeRune()
+		t.ConsumeNext()
 		// Create a <function-token> with its value set to string and return it.
 		return Token{kind: FUNCTION_TOKEN, value: str}
 	}
@@ -1134,13 +1215,11 @@ func (t *Tokenizer) consume_url_token() Token {
 	token := Token{kind: URL_TOKEN, value: nil}
 	// 2. Consume as much whitespace as possible.
 	for is_whitespace(t.NextRune()) {
-		t.ConsumeRune()
+		t.ConsumeNext()
 	}
 	// 3. Repeatedly consume the next input code point from the stream:
 	for {
-		t.ConsumeRune()
-
-		char := t.CurrentRune()
+		char := t.ConsumeNext()
 		switch {
 		// U+0029 RIGHT PARENTHESIS ())
 		case char == CLOSE_PAREN_CHAR:
@@ -1153,17 +1232,17 @@ func (t *Tokenizer) consume_url_token() Token {
 		case is_whitespace(char):
 			// Consume as much whitespace as possible.
 			for is_whitespace(t.NextRune()) {
-				t.ConsumeRune()
+				t.ConsumeNext()
 			}
 			// If the next input code point is U+0029 RIGHT PARENTHESIS ())
+			// or EOF, consume it and return the <url-token> (if EOF was encountered, this is a parse error);
 			switch t.NextRune() {
 			case CLOSE_PAREN_CHAR:
-				t.ConsumeRune()
+				t.ConsumeNext()
 				return token
-			// or EOF, consume it and return the <url-token> (if EOF was encountered, this is a parse error);
 			case EOF_CHAR:
 				fmt.Println("Parse Error: Unexpected EOF while parsing URL")
-				t.ConsumeRune()
+				t.ConsumeNext()
 				return token
 			// otherwise, consume the remnants of a bad url, create a <bad-url-token>, and return it.
 			default:
@@ -1209,9 +1288,7 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		t.ConsumeRune()
-
-		char := t.CurrentRune()
+		char := t.ConsumeNext()
 		switch {
 		// U+0029 RIGHT PARENTHESIS ()), EOF
 		case char == CLOSE_PAREN_CHAR:
@@ -1369,7 +1446,7 @@ func ParseStylesheet(input io.Reader) {
 		log.Fatal(err)
 	}
 
-	stream := preprocess_byte_stream(bytes)
+	stream := preprocess_input_stream(bytes)
 	tokenizer := NewTokenizer(stream)
 
 	var tokens []Token
