@@ -55,6 +55,8 @@ const (
 	FULL_STOP_CHAR             rune = '\u002E'
 	LOWER_E_CHAR               rune = '\u0065'
 	UPPER_E_CHAR               rune = '\u0045'
+	LOWER_U_CHAR               rune = '\u0075'
+	UPPER_U_CHAR               rune = '\u0055'
 	PERCENT_SIGN_CHAR          rune = '\u0025'
 	COMMA_CHAR                 rune = '\u002C'
 	GREATER_THAN_CHAR          rune = '\u003E'
@@ -140,6 +142,7 @@ func preprocess_input_stream(bytes []byte) []rune {
 
 // @NOTE: We currently only decode into UTF-8
 func decode_byte_stream(bytes []byte, encoding Encoding) []rune {
+	// @TODO: implement other encodings
 	if encoding != UTF_8 {
 		log.Fatalf("UTF-8 is currently the only supported encoding")
 	}
@@ -184,6 +187,7 @@ func is_multibyte_body(bite byte) bool {
 	return bite&UTF_8_MULTIBYTE_BODY_MARKER == UTF_8_MULTIBYTE_BODY_MARKER
 }
 
+// https://drafts.csswg.org/css-syntax/#newline
 func is_newline(char rune) bool {
 	// U+000A LINE FEED
 
@@ -358,7 +362,7 @@ func are_number(first rune, second rune, third rune) bool {
 	// Look at the first code point
 	switch {
 	// U+002B PLUS SIGN (+), U+002D HYPHEN-MINUS (-)
-	case first == PLUS_SIGN_CHAR || first == HYPHEN_MINUS_CHAR:
+	case first == PLUS_SIGN_CHAR, first == HYPHEN_MINUS_CHAR:
 		// If the second code point is a digit, return true.
 		if is_digit(second) {
 			return true
@@ -656,22 +660,18 @@ type Token struct {
 func (t Token) ToString() string {
 	kind := t.kind
 
-	str := fmt.Sprintf("<%s>", token_type_name(kind))
+	str := fmt.Sprintf("%s", token_type_name(kind))
 
 	if kind == IDENT_TOKEN || kind == FUNCTION_TOKEN || kind == AT_KEYWORD_TOKEN || kind == HASH_TOKEN || kind == STRING_TOKEN || kind == URL_TOKEN || kind == DELIM_TOKEN {
-		str = str + fmt.Sprintf(" '%s'", string(t.value))
+		str = str + fmt.Sprintf(" (%s)", string(t.value))
 	}
 
-	if kind == NUMBER_TOKEN || kind == PERCENTAGE_TOKEN || kind == DIMENSION_TOKEN {
-		str = str + fmt.Sprintf(" %f", t.numeric)
-	}
-
-	if kind == PERCENTAGE_TOKEN {
-		str = str + "%"
+	if kind == NUMBER_TOKEN || kind == PERCENTAGE_TOKEN {
+		str = str + fmt.Sprintf(" (%f)", t.numeric)
 	}
 
 	if kind == DIMENSION_TOKEN {
-		str = str + string(t.unit)
+		str = str + fmt.Sprintf(" (%f, %s)", t.numeric, string(t.unit))
 	}
 
 	return str
@@ -681,12 +681,14 @@ func (t *Tokenizer) HasNext() bool {
 	return t.index < t.length
 }
 
-func (t *Tokenizer) NextToken() Token {
+// https://drafts.csswg.org/css-syntax/#consume-token
+func (t *Tokenizer) ConsumeToken() Token {
+	// Additionally takes an optional boolean unicode ranges allowed, defaulting to false.
+	unicode_ranges_allowed := false
+	// Consume comments.
 	t.consume_comments()
-
-	t.ConsumeNext()
-
-	char := t.CurrentRune()
+	// Consume the next input code point.
+	char := t.ConsumeNext()
 	switch {
 	case is_whitespace(char):
 		// Consume as much whitespace as possible.
@@ -697,20 +699,21 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{kind: WHITESPACE_TOKEN}
 	// U+0022 QUOTATION MARK (")
 	case char == QUOTATION_MARK_CHAR:
+		// Consume a string token and return it.
 		return t.consume_string_token_default()
 	// U+0023 NUMBER SIGN (#)
 	case char == NUMBER_SIGN_CHAR:
 		// If the next input code point is an ident code point or the next two input code points are a valid escape
 		if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.SecondRune()) {
-			// Create a <hash-token>.
+			// 1. Create a <hash-token>.
 			token := Token{kind: HASH_TOKEN}
-			// If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
+			// 2. If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
 			if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
 				token.hash_flag = HASH_ID
 			}
-			// Consume an ident sequence, and set the <hash-token>’s value to the returned string.
+			// 3. Consume an ident sequence, and set the <hash-token>’s value to the returned string.
 			token.value = t.consume_ident_sequence()
-			// Return the <hash-token>.
+			// 4. Return the <hash-token>.
 			return token
 		}
 
@@ -718,6 +721,7 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
 	// U+0027 APOSTROPHE (')
 	case char == APOSTROPHE_CHAR:
+		// Consume a string token and return it.
 		return t.consume_string_token_default()
 	// U+0028 LEFT PARENTHESIS (()
 	case char == OPEN_PAREN_CHAR:
@@ -729,7 +733,7 @@ func (t *Tokenizer) NextToken() Token {
 	case char == PLUS_SIGN_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return t.consume_numeric_token()
 		}
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
@@ -741,7 +745,7 @@ func (t *Tokenizer) NextToken() Token {
 	case char == HYPHEN_MINUS_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return t.consume_numeric_token()
 		}
 
@@ -753,7 +757,7 @@ func (t *Tokenizer) NextToken() Token {
 
 		// Otherwise, if the input stream starts with an ident sequence, reconsume the current input code point, consume an ident-like token, and return it.
 		if t.starts_with_ident() {
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return t.consume_ident_like_token()
 		}
 
@@ -763,7 +767,7 @@ func (t *Tokenizer) NextToken() Token {
 	case char == FULL_STOP_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return t.consume_numeric_token()
 		}
 
@@ -788,9 +792,9 @@ func (t *Tokenizer) NextToken() Token {
 		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
 	// U+0040 COMMERCIAL AT (@)
 	case char == AT_CHAR:
-		// If the next 3 input code points would start an ident sequence,
-		// consume an ident sequence, create an <at-keyword-token> with its value set to the returned value, and return it.
+		// If the next 3 input code points would start an ident sequence
 		if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
+			// Consume an ident sequence, create an <at-keyword-token> with its value set to the returned value, and return it.
 			return Token{kind: AT_KEYWORD_TOKEN, value: t.consume_ident_sequence()}
 		}
 
@@ -803,7 +807,7 @@ func (t *Tokenizer) NextToken() Token {
 	case char == BACKWARD_SLASH_CHAR:
 		// If the input stream starts with a valid escape, reconsume the current input code point, consume an ident-like token, and return it.
 		if t.starts_with_valid_escape() {
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return t.consume_ident_like_token()
 		}
 
@@ -822,12 +826,23 @@ func (t *Tokenizer) NextToken() Token {
 	// digit
 	case is_digit(char):
 		// Reconsume the current input code point, consume a numeric token, and return it.
-		t.ReconsumeRune()
+		t.ReconsumeCurrent()
 		return t.consume_numeric_token()
+	// U+0055 LATIN CAPITAL LETTER U (U), U+0075 LATIN LOWERCASE LETTER U (u)
+	case char == UPPER_U_CHAR, char == LOWER_U_CHAR:
+		// If unicode ranges allowed is true and the input stream would start a unicode-range,
+		// reconsume the current input code point, consume a unicode-range token, and return it.
+		// @TODO: implement unicode ranges
+		if unicode_ranges_allowed {
+			log.Fatal("Parse Error: Unicode Ranges are currently not supported")
+		}
+		// Otherwise, reconsume the current input code point, consume an ident-like token, and return it.
+		t.ReconsumeCurrent()
+		return t.consume_ident_like_token()
 	// ident-start code point
 	case is_ident_start(char):
 		// Reconsume the current input code point, consume an ident-like token, and return it.
-		t.ReconsumeRune()
+		t.ReconsumeCurrent()
 		return t.consume_ident_like_token()
 	// EOF
 	case char == EOF_CHAR:
@@ -841,7 +856,7 @@ func (t *Tokenizer) NextToken() Token {
 
 func (t *Tokenizer) peek_rune(number int) rune {
 	index := t.index + number
-	if index >= t.length {
+	if index < 0 || index >= t.length {
 		return EOF_CHAR
 	}
 
@@ -882,28 +897,26 @@ func (t *Tokenizer) ConsumeNext() rune {
 // Push the current input code point back onto the front of the input stream, so that the next time you are instructed to consume the next input code point,
 // it will instead reconsume the current input code point.
 // https://drafts.csswg.org/css-syntax/#reconsume-the-current-input-code-point
-func (t *Tokenizer) ReconsumeRune() {
+func (t *Tokenizer) ReconsumeCurrent() {
 	t.ConsumeRunes(-1)
 }
 
 // https://drafts.csswg.org/css-syntax/#consume-comment
 func (t *Tokenizer) consume_comments() {
-	// If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*),
-	// consume them and all following code points up to and including the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/),
-	// or up to an EOF code point. Return to the start of this step.
-
-	// If the preceding paragraph ended by consuming an EOF code point, this is a parse error.
-	// Return nothing.
-
+	// If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*)
 	for t.NextRune() == FORWARD_SLASH_CHAR && t.SecondRune() == ASTERISK_CHAR {
+		// consume them
 		t.ConsumeRunes(2)
+
 		for {
+			// and all following code points up to and including
 			char := t.ConsumeNext()
-			switch {
-			case char == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR:
+			// the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/)
+			if char == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR {
 				t.ConsumeRunes(2)
 				break
-			case char == EOF_CHAR:
+			} else if char == EOF_CHAR { // or up to an EOF code point
+				// If the preceding paragraph ended by consuming an EOF code point, this is a parse error
 				log.Fatal("Parse Error: Unexpected EOF when parsing comment")
 			}
 		}
@@ -920,9 +933,7 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		t.ConsumeRunes(1)
-
-		char := t.CurrentRune()
+		char := t.ConsumeNext()
 		switch {
 		// ending code point:
 		case char == ending:
@@ -937,7 +948,7 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 		case is_newline(char):
 			// This is a parse error. Reconsume the current input code point, create a <bad-string-token>, and return it.
 			fmt.Println("Parse Error: Unexpected newline when parsing string")
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return Token{kind: BAD_STRING_TOKEN}
 		// U+005C REVERSE SOLIDUS (\):
 		case char == BACKWARD_SLASH_CHAR:
@@ -1029,9 +1040,7 @@ func (t *Tokenizer) consume_ident_sequence() []rune {
 	var result []rune
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		t.ConsumeRunes(1)
-
-		char := t.CurrentRune()
+		char := t.ConsumeNext()
 		switch {
 		// ident code point
 		case is_ident(char):
@@ -1044,7 +1053,7 @@ func (t *Tokenizer) consume_ident_sequence() []rune {
 		// anything else
 		default:
 			// Reconsume the current input code point. Return result.
-			t.ReconsumeRune()
+			t.ReconsumeCurrent()
 			return result
 		}
 	}
@@ -1081,7 +1090,6 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 	// Returns a numeric value, a string type which is either "integer" or "number",
 	// and an optional sign character which is either "+", "-", or missing.
 
-	value := float64(0)
 	// 1. Let type be the string "integer". Let number part and exponent part be the empty string.
 	type_flag := TYPE_INTEGER
 	var number_part []rune
@@ -1091,10 +1099,10 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 	next := t.NextRune()
 	if next == PLUS_SIGN_CHAR || next == HYPHEN_MINUS_CHAR {
 		t.ConsumeNext()
+		// Append it to number part and set sign character to it.
+		number_part = append(number_part, next)
+		sign = []rune{next}
 	}
-	// Append it to number part and set sign character to it.
-	number_part = append(number_part, next)
-	sign = []rune{next}
 
 	// 3. While the next input code point is a digit, consume it and append it to number part.
 	for is_digit(t.NextRune()) {
@@ -1141,10 +1149,11 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 	}
 
 	// 6. Let number value be the result of interpreting number part as a base-10 number.
-	number_value, err := strconv.ParseInt(string(number_part), 10, 0)
+	value, err := strconv.ParseFloat(string(number_part), 10)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// If exponent part is non-empty, interpret it as a base-10 integer
 	if len(exponent_part) > 0 {
 		exponent_value, err := strconv.ParseInt(string(exponent_part), 10, 0)
@@ -1152,14 +1161,14 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 			log.Fatal(err)
 		}
 		// Then raise 10 to the power of the result, multiply it by number value, and set value to that result.
-		value = float64(number_value) * math.Pow10(int(exponent_value))
+		value = value * math.Pow10(int(exponent_value))
 	}
 
 	// 7. Return value, type, and sign character.
 	return value, type_flag, sign
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-ident-like-token
+// https://drafts.csswg.org/css-syntax/#consume-ident-like-token
 func (t *Tokenizer) consume_ident_like_token() Token {
 	// Returns an <ident-token>, <function-token>, <url-token>, or <bad-url-token>.
 
@@ -1173,8 +1182,7 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 			t.ConsumeNext()
 		}
 		// If the next one or two input code points are U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('),
-		// or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE ('),
-		// then create a <function-token> with its value set to string and return it.
+		// or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE (')
 		first, second := t.NextRune(), t.SecondRune()
 		switch {
 		case first == QUOTATION_MARK_CHAR:
@@ -1184,6 +1192,7 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 		case is_whitespace(first) && second == QUOTATION_MARK_CHAR:
 			fallthrough
 		case is_whitespace(first) && second == APOSTROPHE_CHAR:
+			// create a <function-token> with its value set to string and return it.
 			return Token{kind: FUNCTION_TOKEN, value: str}
 		// Otherwise, consume a url token, and return it.
 		default:
@@ -1202,14 +1211,9 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 	return Token{kind: IDENT_TOKEN, value: str}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-url-token
+// https://drafts.csswg.org/css-syntax/#consume-url-token
 func (t *Tokenizer) consume_url_token() Token {
 	// Returns either a <url-token> or a <bad-url-token>.
-
-	// @NOTE: This algorithm assumes that the initial "url(" has already been consumed.
-	//		  This algorithm also assumes that it’s being called to consume an "unquoted" value, like url(foo).
-	//        A quoted value, like url("foo"), is parsed as a <function-token>.
-	//        Consume an ident-like token automatically handles this distinction; this algorithm shouldn’t be called directly otherwise.
 
 	// 1. Initially create a <url-token> with its value set to the empty string.
 	token := Token{kind: URL_TOKEN, value: nil}
@@ -1250,13 +1254,7 @@ func (t *Tokenizer) consume_url_token() Token {
 				return Token{kind: BAD_URL_TOKEN}
 			}
 		// U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('), U+0028 LEFT PARENTHESIS ((), non-printable code point
-		case char == QUOTATION_MARK_CHAR:
-			fallthrough
-		case char == APOSTROPHE_CHAR:
-			fallthrough
-		case char == OPEN_PAREN_CHAR:
-			fallthrough
-		case is_non_printable(char):
+		case char == QUOTATION_MARK_CHAR, char == APOSTROPHE_CHAR, char == OPEN_PAREN_CHAR, is_non_printable(char):
 			// This is a parse error. Consume the remnants of a bad url, create a <bad-url-token>, and return it.
 			fmt.Printf("Parse Error: Unexpected character '%x' while parsing URL\n", char)
 			t.consume_bad_url_remnants()
@@ -1282,7 +1280,7 @@ func (t *Tokenizer) consume_url_token() Token {
 
 // Consume the remnants of a bad url from a stream of code points,
 // "cleaning up" after the tokenizer realizes that it’s in the middle of a <bad-url-token> rather than a <url-token>.
-// https://www.w3.org/TR/css-syntax-3/#consume-remnants-of-bad-url
+// https://drafts.csswg.org/css-syntax/#consume-remnants-of-bad-url
 func (t *Tokenizer) consume_bad_url_remnants() {
 	// Returns nothing; its sole use is to consume enough of the input stream to reach a recovery point where normal tokenizing can resume.
 
@@ -1291,9 +1289,7 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 		char := t.ConsumeNext()
 		switch {
 		// U+0029 RIGHT PARENTHESIS ()), EOF
-		case char == CLOSE_PAREN_CHAR:
-			fallthrough
-		case char == EOF_CHAR:
+		case char == CLOSE_PAREN_CHAR, char == EOF_CHAR:
 			return
 		// the input stream starts with a valid escape
 		case t.starts_with_valid_escape():
@@ -1301,6 +1297,9 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 			// @NOTE: This allows an escaped right parenthesis ("\)") to be encountered without ending the <bad-url-token>.
 			//        This is otherwise identical to the "anything else" clause.
 			t.consume_escaped()
+		// anything else
+		default:
+			// Do nothing
 		}
 	}
 }
@@ -1451,14 +1450,16 @@ func ParseStylesheet(input io.Reader) {
 
 	var tokens []Token
 	for tokenizer.HasNext() {
-		tokens = append(tokens, tokenizer.NextToken())
+		token := tokenizer.ConsumeToken()
+		fmt.Println(token.ToString())
+		tokens = append(tokens, token)
 	}
 
-	parser := NewParser(tokens)
-	output := parser.consume_rules_list(true)
-	for i, elem := range output {
-		fmt.Printf("[%d]: %s\n", i, elem.ToString())
-	}
+	// parser := NewParser(tokens)
+	// output := parser.consume_rules_list(true)
+	// for i, elem := range output {
+	// 	fmt.Printf("[%d]: %s\n", i, elem.ToString())
+	// }
 }
 
 // https://www.w3.org/TR/css-syntax-3/#consume-list-of-rules
