@@ -1,9 +1,3 @@
-@import 'http://foo.com';
-
 div {
     color: blue;
-}
-
-p {
-    text-align: center;
 }

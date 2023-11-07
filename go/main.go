@@ -85,23 +85,6 @@ func main() {
 	defer file.Close()
 
 	ParseStylesheet(file)
-
-	// bytes, err := io.ReadAll(file)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// input := preprocess_byte_stream(bytes)
-	// tokenizer := Tokenizer{input: input, length: len(input), index: -1}
-
-	// var tokens []Token
-	// for tokenizer.HasNext() {
-	// 	tokens = append(tokens, tokenizer.NextToken())
-	// }
-
-	// for i, token := range tokens {
-	// 	fmt.Printf("[%d]: %s\n", i, token.ToString())
-	// }
 }
 
 // https://drafts.csswg.org/css-syntax/#input-preprocessing
@@ -319,7 +302,7 @@ func are_valid_escape(first rune, second rune) bool {
 // https://drafts.csswg.org/css-syntax/#starts-with-a-valid-escape
 func (t *Tokenizer) starts_with_valid_escape() bool {
 	// The two code points in question are the current input code point and the next input code point, in that order.
-	return are_valid_escape(t.CurrentRune(), t.NextRune())
+	return are_valid_escape(t.current_rune(), t.next_rune())
 }
 
 // Check if three code points would start an ident sequence.
@@ -351,7 +334,7 @@ func are_start_ident(first rune, second rune, third rune) bool {
 // https://drafts.csswg.org/css-syntax/#would-start-an-identifier
 func (t *Tokenizer) starts_with_ident() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
-	return are_start_ident(t.CurrentRune(), t.NextRune(), t.SecondRune())
+	return are_start_ident(t.current_rune(), t.next_rune(), t.second_rune())
 }
 
 // Check if three code points would start a number.
@@ -386,118 +369,8 @@ func are_number(first rune, second rune, third rune) bool {
 // https://drafts.csswg.org/css-syntax/#starts-with-a-number
 func (t *Tokenizer) starts_with_number() bool {
 	// The three code points in question are the current input code point and the next two input code points, in that order.
-	return are_number(t.CurrentRune(), t.NextRune(), t.SecondRune())
+	return are_number(t.current_rune(), t.next_rune(), t.second_rune())
 }
-
-// https://www.w3.org/TR/css-syntax-3/#convert-string-to-number
-// func convert_string_to_number(repr []rune) float64 {
-// 	// @NOTE: This algorithm does not do any verification to ensure that the string contains only a number.
-// 	//        Ensure that the string contains only a valid CSS number before calling this algorithm.
-
-// 	// Divide the string into seven components, in order from left to right
-// 	index := 0
-// 	length := len(repr)
-
-// 	// 1. A sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
-// 	//    Let s be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let s be the number 1.
-// 	s := 1
-
-// 	switch repr[index] {
-// 	case HYPHEN_MINUS_CHAR:
-// 		s = -1
-// 		index += 1
-// 	case PLUS_SIGN_CHAR:
-// 		index += 1
-// 	}
-
-// 	// 2. An integer part: zero or more digits.
-// 	//    If there is at least one digit, let i be the number formed by interpreting the digits as a base-10 integer;
-// 	//    otherwise, let i be the number 0.
-// 	i := 0
-
-// 	start_index := index
-// 	for index < length && is_digit(repr[index]) {
-// 		index += 1
-// 	}
-
-// 	if index > start_index {
-// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-
-// 		i = int(value)
-// 	}
-
-// 	// 3. A decimal point: a single U+002E FULL STOP (.), or the empty string.
-// 	if index < length && repr[index] == FULL_STOP_CHAR {
-// 		index += 1
-// 	}
-
-// 	// 4. A fractional part: zero or more digits.
-// 	//    If there is at least one digit, let f be the number formed by interpreting the digits as a base-10 integer and d be the number of digits;
-// 	//    otherwise, let f and d be the number 0.
-// 	f := 0
-// 	d := 0
-
-// 	start_index = index
-// 	for index < length && is_digit(repr[index]) {
-// 		index += 1
-// 	}
-
-// 	if index > start_index {
-// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-
-// 		f = int(value)
-// 		d = index - start_index
-// 	}
-
-// 	// 5. An exponent indicator: a single U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e), or the empty string.
-// 	if index < length && (repr[index] == UPPER_E_CHAR || repr[index] == LOWER_E_CHAR) {
-// 		index += 1
-// 	}
-
-// 	// 6. An exponent sign: a single U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), or the empty string.
-// 	//    Let t be the number -1 if the sign is U+002D HYPHEN-MINUS (-); otherwise, let t be the number 1.
-// 	t := 0
-
-// 	if index < length {
-// 		switch repr[index] {
-// 		case HYPHEN_MINUS_CHAR:
-// 			t = -1
-// 			index += 1
-// 		case PLUS_SIGN_CHAR:
-// 			index += 1
-// 		}
-// 	}
-
-// 	// 7. An exponent: zero or more digits.
-// 	//    If there is at least one digit, let e be the number formed by interpreting the digits as a base-10 integer;
-// 	//    otherwise, let e be the number 0.
-// 	e := 0
-
-// 	start_index = index
-// 	for index < length && is_digit(repr[index]) {
-// 		index += 1
-// 	}
-
-// 	if index > start_index {
-// 		value, err := strconv.ParseInt(string(repr[start_index:index]), 10, 0)
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-
-// 		e = int(value)
-// 	}
-
-// 	// Return the number s·(i + f·10^(-d))·10^(te).
-// 	exponent := math.Pow10(t * e)
-// 	fraction := float64(f) * math.Pow10(-1*d)
-// 	return float64(s) * (float64(i) + fraction) * exponent
-// }
 
 type Tokenizer struct {
 	input  []rune
@@ -513,11 +386,11 @@ func NewTokenizer(input []rune) *Tokenizer {
 	}
 }
 
-type TokenType uint8
+type TokenKind uint8
 
 // https://drafts.csswg.org/css-syntax/#tokenization
 const (
-	IDENT_TOKEN TokenType = iota
+	IDENT_TOKEN TokenKind = iota
 	FUNCTION_TOKEN
 	AT_KEYWORD_TOKEN
 	HASH_TOKEN
@@ -545,8 +418,8 @@ const (
 	EOF_TOKEN
 )
 
-func token_type_name(kind TokenType) string {
-	switch kind {
+func (k TokenKind) String() string {
+	switch k {
 	case IDENT_TOKEN:
 		return "IDENT_TOKEN"
 	case FUNCTION_TOKEN:
@@ -600,11 +473,10 @@ func token_type_name(kind TokenType) string {
 	case EOF_TOKEN:
 		return "EOF_TOKEN"
 	}
-
-	return ""
+	return "<UNKNOWN TOKEN>"
 }
 
-func mirror(kind TokenType) TokenType {
+func mirror(kind TokenKind) TokenKind {
 	switch kind {
 	case OPEN_SQUARE_TOKEN:
 		return CLOSE_SQUARE_TOKEN
@@ -613,7 +485,7 @@ func mirror(kind TokenType) TokenType {
 	case OPEN_CURLY_TOKEN:
 		return CLOSE_CURLY_TOKEN
 	default:
-		log.Panicf("Invalid call to mirror with TokenType '%d'", kind)
+		log.Panicf("Invalid call to mirror with TokenKind '%d'", kind)
 		return EOF_TOKEN
 	}
 }
@@ -636,7 +508,7 @@ const (
 
 // https://drafts.csswg.org/css-syntax/#tokenization
 type Token struct {
-	kind TokenType
+	kind TokenKind
 	// <ident-token>, <function-token>, <at-keyword-token>, <hash-token>, <string-token>, and <url-token> have a value composed of zero or more code points.
 	// <delim-token> has a value composed of a single code point.
 	value []rune
@@ -657,10 +529,11 @@ type Token struct {
 	range_end   rune
 }
 
-func (t Token) ToString() string {
+func (t Token) String() string {
+	// @TODO: Redo with string builder
 	kind := t.kind
 
-	str := fmt.Sprintf("%s", token_type_name(kind))
+	str := kind.String()
 
 	if kind == IDENT_TOKEN || kind == FUNCTION_TOKEN || kind == AT_KEYWORD_TOKEN || kind == HASH_TOKEN || kind == STRING_TOKEN || kind == URL_TOKEN || kind == DELIM_TOKEN {
 		str = str + fmt.Sprintf(" (%s)", string(t.value))
@@ -677,8 +550,15 @@ func (t Token) ToString() string {
 	return str
 }
 
-func (t *Tokenizer) HasNext() bool {
-	return t.index < t.length
+func (t *Tokenizer) Tokenize() []Token {
+	// To tokenize a stream of code points into a stream of CSS tokens input, repeatedly consume a token from input until an <EOF-token> is reached,
+	// pushing each of the returned tokens into a stream.
+	var tokens []Token
+	for token := t.ConsumeToken(); token.kind != EOF_TOKEN; token = t.ConsumeToken() {
+		tokens = append(tokens, token)
+	}
+
+	return tokens
 }
 
 // https://drafts.csswg.org/css-syntax/#consume-token
@@ -688,12 +568,12 @@ func (t *Tokenizer) ConsumeToken() Token {
 	// Consume comments.
 	t.consume_comments()
 	// Consume the next input code point.
-	char := t.ConsumeNext()
+	char := t.consume_next()
 	switch {
 	case is_whitespace(char):
 		// Consume as much whitespace as possible.
-		for is_whitespace(t.NextRune()) {
-			t.ConsumeNext()
+		for is_whitespace(t.next_rune()) {
+			t.consume_next()
 		}
 		// Return a <whitespace-token>.
 		return Token{kind: WHITESPACE_TOKEN}
@@ -704,11 +584,11 @@ func (t *Tokenizer) ConsumeToken() Token {
 	// U+0023 NUMBER SIGN (#)
 	case char == NUMBER_SIGN_CHAR:
 		// If the next input code point is an ident code point or the next two input code points are a valid escape
-		if is_ident(t.NextRune()) || are_valid_escape(t.NextRune(), t.SecondRune()) {
+		if is_ident(t.next_rune()) || are_valid_escape(t.next_rune(), t.second_rune()) {
 			// 1. Create a <hash-token>.
 			token := Token{kind: HASH_TOKEN}
 			// 2. If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
-			if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
+			if are_start_ident(t.next_rune(), t.second_rune(), t.third_rune()) {
 				token.hash_flag = HASH_ID
 			}
 			// 3. Consume an ident sequence, and set the <hash-token>’s value to the returned string.
@@ -718,7 +598,7 @@ func (t *Tokenizer) ConsumeToken() Token {
 		}
 
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+0027 APOSTROPHE (')
 	case char == APOSTROPHE_CHAR:
 		// Consume a string token and return it.
@@ -733,7 +613,7 @@ func (t *Tokenizer) ConsumeToken() Token {
 	case char == PLUS_SIGN_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return t.consume_numeric_token()
 		}
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
@@ -745,34 +625,34 @@ func (t *Tokenizer) ConsumeToken() Token {
 	case char == HYPHEN_MINUS_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return t.consume_numeric_token()
 		}
 
 		// Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->), consume them and return a <CDC-token>.
-		if t.NextRune() == HYPHEN_MINUS_CHAR && t.SecondRune() == GREATER_THAN_CHAR {
-			t.ConsumeRunes(2)
+		if t.next_rune() == HYPHEN_MINUS_CHAR && t.second_rune() == GREATER_THAN_CHAR {
+			t.consume_runes(2)
 			return Token{kind: CDC_TOKEN}
 		}
 
 		// Otherwise, if the input stream starts with an ident sequence, reconsume the current input code point, consume an ident-like token, and return it.
 		if t.starts_with_ident() {
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return t.consume_ident_like_token()
 		}
 
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+002E FULL STOP (.)
 	case char == FULL_STOP_CHAR:
 		// If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
 		if t.starts_with_number() {
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return t.consume_numeric_token()
 		}
 
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+003A COLON (:)
 	case char == COLON_CHAR:
 		return Token{kind: COLON_TOKEN}
@@ -782,24 +662,24 @@ func (t *Tokenizer) ConsumeToken() Token {
 	// U+003C LESS-THAN SIGN (<)
 	case char == LESS_THAN_CHAR:
 		// If the next 3 input code points are U+0021 EXCLAMATION MARK U+002D HYPHEN-MINUS U+002D HYPHEN-MINUS (!--), consume them and return a <CDO-token>.
-		first, second, third := t.NextRune(), t.SecondRune(), t.ThirdRune()
+		first, second, third := t.next_rune(), t.second_rune(), t.third_rune()
 		if first == EXCLAMATON_MARK_CHAR && second == HYPHEN_MINUS_CHAR && third == HYPHEN_MINUS_CHAR {
-			t.ConsumeRunes(3)
+			t.consume_runes(3)
 			return Token{kind: CDO_TOKEN}
 		}
 
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+0040 COMMERCIAL AT (@)
 	case char == AT_CHAR:
 		// If the next 3 input code points would start an ident sequence
-		if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
+		if are_start_ident(t.next_rune(), t.second_rune(), t.third_rune()) {
 			// Consume an ident sequence, create an <at-keyword-token> with its value set to the returned value, and return it.
 			return Token{kind: AT_KEYWORD_TOKEN, value: t.consume_ident_sequence()}
 		}
 
 		// Otherwise, return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+005B LEFT SQUARE BRACKET ([)
 	case char == OPEN_SQUARE_CHAR:
 		return Token{kind: OPEN_SQUARE_TOKEN}
@@ -807,13 +687,13 @@ func (t *Tokenizer) ConsumeToken() Token {
 	case char == BACKWARD_SLASH_CHAR:
 		// If the input stream starts with a valid escape, reconsume the current input code point, consume an ident-like token, and return it.
 		if t.starts_with_valid_escape() {
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return t.consume_ident_like_token()
 		}
 
 		// Otherwise, this is a parse error. Return a <delim-token> with its value set to the current input code point.
 		fmt.Println("Parse Error: Encountered invalid escape")
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	// U+005D RIGHT SQUARE BRACKET (])
 	case char == CLOSE_SQUARE_CHAR:
 		return Token{kind: CLOSE_SQUARE_TOKEN}
@@ -826,7 +706,7 @@ func (t *Tokenizer) ConsumeToken() Token {
 	// digit
 	case is_digit(char):
 		// Reconsume the current input code point, consume a numeric token, and return it.
-		t.ReconsumeCurrent()
+		t.reconsume_current()
 		return t.consume_numeric_token()
 	// U+0055 LATIN CAPITAL LETTER U (U), U+0075 LATIN LOWERCASE LETTER U (u)
 	case char == UPPER_U_CHAR, char == LOWER_U_CHAR:
@@ -837,12 +717,12 @@ func (t *Tokenizer) ConsumeToken() Token {
 			log.Fatal("Parse Error: Unicode Ranges are currently not supported")
 		}
 		// Otherwise, reconsume the current input code point, consume an ident-like token, and return it.
-		t.ReconsumeCurrent()
+		t.reconsume_current()
 		return t.consume_ident_like_token()
 	// ident-start code point
 	case is_ident_start(char):
 		// Reconsume the current input code point, consume an ident-like token, and return it.
-		t.ReconsumeCurrent()
+		t.reconsume_current()
 		return t.consume_ident_like_token()
 	// EOF
 	case char == EOF_CHAR:
@@ -850,7 +730,7 @@ func (t *Tokenizer) ConsumeToken() Token {
 	// anything else
 	default:
 		// Return a <delim-token> with its value set to the current input code point.
-		return Token{kind: DELIM_TOKEN, value: []rune{t.CurrentRune()}}
+		return Token{kind: DELIM_TOKEN, value: []rune{t.current_rune()}}
 	}
 }
 
@@ -865,59 +745,59 @@ func (t *Tokenizer) peek_rune(number int) rune {
 
 // The last code point to have been consumed.
 // https://drafts.csswg.org/css-syntax/#current-input-code-point
-func (t *Tokenizer) CurrentRune() rune {
+func (t *Tokenizer) current_rune() rune {
 	return t.peek_rune(0)
 }
 
 // The first code point in the input stream that has not yet been consumed.
 // https://drafts.csswg.org/css-syntax/#next-input-code-point
-func (t *Tokenizer) NextRune() rune {
+func (t *Tokenizer) next_rune() rune {
 	return t.peek_rune(1)
 }
 
 // The code point in the input stream immediately after the next rune.
-func (t *Tokenizer) SecondRune() rune {
+func (t *Tokenizer) second_rune() rune {
 	return t.peek_rune(2)
 }
 
-// // The code point in the input stream immediately after the second rune.
-func (t *Tokenizer) ThirdRune() rune {
+// The code point in the input stream immediately after the second rune.
+func (t *Tokenizer) third_rune() rune {
 	return t.peek_rune(3)
 }
 
-func (t *Tokenizer) ConsumeRunes(number int) rune {
+func (t *Tokenizer) consume_runes(number int) rune {
 	t.index += number
-	return t.CurrentRune()
+	return t.current_rune()
 }
 
-func (t *Tokenizer) ConsumeNext() rune {
-	return t.ConsumeRunes(1)
+func (t *Tokenizer) consume_next() rune {
+	return t.consume_runes(1)
 }
 
 // Push the current input code point back onto the front of the input stream, so that the next time you are instructed to consume the next input code point,
 // it will instead reconsume the current input code point.
 // https://drafts.csswg.org/css-syntax/#reconsume-the-current-input-code-point
-func (t *Tokenizer) ReconsumeCurrent() {
-	t.ConsumeRunes(-1)
+func (t *Tokenizer) reconsume_current() {
+	t.consume_runes(-1)
 }
 
 // https://drafts.csswg.org/css-syntax/#consume-comment
 func (t *Tokenizer) consume_comments() {
 	// If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*)
-	for t.NextRune() == FORWARD_SLASH_CHAR && t.SecondRune() == ASTERISK_CHAR {
+	for t.next_rune() == FORWARD_SLASH_CHAR && t.second_rune() == ASTERISK_CHAR {
 		// consume them
-		t.ConsumeRunes(2)
+		t.consume_runes(2)
 
 		for {
 			// and all following code points up to and including
-			char := t.ConsumeNext()
+			char := t.consume_next()
 			// the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/)
-			if char == ASTERISK_CHAR && t.NextRune() == FORWARD_SLASH_CHAR {
-				t.ConsumeRunes(2)
+			if char == ASTERISK_CHAR && t.next_rune() == FORWARD_SLASH_CHAR {
+				t.consume_runes(2)
 				break
 			} else if char == EOF_CHAR { // or up to an EOF code point
 				// If the preceding paragraph ended by consuming an EOF code point, this is a parse error
-				log.Fatal("Parse Error: Unexpected EOF when parsing comment")
+				log.Fatal("Parse Error: Encountered unexpected EOF when parsing comment")
 			}
 		}
 	}
@@ -929,11 +809,11 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 	// Returns either a <string-token> or <bad-string-token>.
 
 	// Initially create a <string-token> with its value set to the empty string.
-	token := Token{kind: STRING_TOKEN, value: nil}
+	token := Token{kind: STRING_TOKEN}
 
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		char := t.ConsumeNext()
+		char := t.consume_next()
 		switch {
 		// ending code point:
 		case char == ending:
@@ -942,22 +822,22 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 		// EOF
 		case char == EOF_CHAR:
 			// This is a parse error. Return the <string-token>.
-			fmt.Println("Parse Error: Unexpected EOF when parsing string")
+			fmt.Println("Parse Error: Encountered unexpected EOF when parsing string")
 			return token
 		// newline:
 		case is_newline(char):
 			// This is a parse error. Reconsume the current input code point, create a <bad-string-token>, and return it.
-			fmt.Println("Parse Error: Unexpected newline when parsing string")
-			t.ReconsumeCurrent()
+			fmt.Println("Parse Error: Encountered unexpected newline when parsing string")
+			t.reconsume_current()
 			return Token{kind: BAD_STRING_TOKEN}
 		// U+005C REVERSE SOLIDUS (\):
 		case char == BACKWARD_SLASH_CHAR:
 			// If the next input code point is EOF, do nothing.
-			next := t.NextRune()
+			next := t.next_rune()
 			if next != EOF_CHAR {
 				// Otherwise, if the next input code point is a newline, consume it.
 				if is_newline(next) {
-					t.ConsumeNext()
+					t.consume_next()
 				} else {
 					// Otherwise, consume an escaped code point and append the returned code point to the <string-token>’s value.
 					// @ASSERTED: the stream starts with a valid escape
@@ -974,7 +854,7 @@ func (t *Tokenizer) consume_string_token(ending rune) Token {
 // https://drafts.csswg.org/css-syntax/#consume-string-token
 func (t *Tokenizer) consume_string_token_default() Token {
 	// If an ending code point is not specified, the current input code point is used.
-	return t.consume_string_token(t.CurrentRune())
+	return t.consume_string_token(t.current_rune())
 }
 
 // https://drafts.csswg.org/css-syntax/#consume-escaped-code-point
@@ -984,7 +864,7 @@ func (t *Tokenizer) consume_escaped() rune {
 	// Returns a code point.
 
 	// Consume the next input code point.
-	char := t.ConsumeNext()
+	char := t.consume_next()
 	switch {
 	// hex digit
 	case is_hex_digit(char):
@@ -994,16 +874,16 @@ func (t *Tokenizer) consume_escaped() rune {
 		digits = append(digits, char)
 
 		for i := 0; i < 5; i += 1 {
-			if is_hex_digit(t.NextRune()) {
-				digits = append(digits, t.ConsumeNext())
+			if is_hex_digit(t.next_rune()) {
+				digits = append(digits, t.consume_next())
 			} else {
 				break
 			}
 		}
 
 		// If the next input code point is whitespace, consume it as well.
-		if is_whitespace(t.NextRune()) {
-			t.ConsumeNext()
+		if is_whitespace(t.next_rune()) {
+			t.consume_next()
 		}
 
 		// Interpret the hex digits as a hexadecimal number.
@@ -1023,12 +903,12 @@ func (t *Tokenizer) consume_escaped() rune {
 	// EOF
 	case char == EOF_CHAR:
 		// This is a parse error. Return U+FFFD REPLACEMENT CHARACTER (�).
-		fmt.Println("Parse Error: Unexpected EOF when parsing escape")
+		fmt.Println("Parse Error: Encountered unexpected EOF when parsing escape")
 		return REPLACEMENT_CHAR
 	// anything else
 	default:
 		// Return the current input code point.
-		return t.CurrentRune()
+		return t.current_rune()
 	}
 }
 
@@ -1040,7 +920,7 @@ func (t *Tokenizer) consume_ident_sequence() []rune {
 	var result []rune
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		char := t.ConsumeNext()
+		char := t.consume_next()
 		switch {
 		// ident code point
 		case is_ident(char):
@@ -1053,7 +933,7 @@ func (t *Tokenizer) consume_ident_sequence() []rune {
 		// anything else
 		default:
 			// Reconsume the current input code point. Return result.
-			t.ReconsumeCurrent()
+			t.reconsume_current()
 			return result
 		}
 	}
@@ -1066,17 +946,17 @@ func (t *Tokenizer) consume_numeric_token() Token {
 	// Consume a number and let number be the result.
 	number, type_flag, sign := t.consume_number()
 	// If the next 3 input code points would start an ident sequence
-	if are_start_ident(t.NextRune(), t.SecondRune(), t.ThirdRune()) {
+	if are_start_ident(t.next_rune(), t.second_rune(), t.third_rune()) {
 		// 1. Create a <dimension-token> with the same value, type flag, and sign character as number, and a unit set initially to the empty string.
-		token := Token{kind: DIMENSION_TOKEN, numeric: number, type_flag: type_flag, sign: sign, unit: nil}
+		token := Token{kind: DIMENSION_TOKEN, numeric: number, type_flag: type_flag, sign: sign}
 		// 2. Consume an ident sequence. Set the <dimension-token>’s unit to the returned value.
 		token.unit = t.consume_ident_sequence()
 		// 3. Return the <dimension-token>.
 		return token
 	}
 	// Otherwise, if the next input code point is U+0025 PERCENTAGE SIGN (%), consume it.
-	if t.NextRune() == PERCENT_SIGN_CHAR {
-		t.ConsumeNext()
+	if t.next_rune() == PERCENT_SIGN_CHAR {
+		t.consume_next()
 		// Create a <percentage-token> with the same value as number, and return it.
 		return Token{kind: PERCENTAGE_TOKEN, numeric: number}
 	}
@@ -1096,26 +976,26 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 	var exponent_part []rune
 	var sign []rune
 	// 2. If the next input code point is U+002B PLUS SIGN (+) or U+002D HYPHEN-MINUS (-), consume it.
-	next := t.NextRune()
+	next := t.next_rune()
 	if next == PLUS_SIGN_CHAR || next == HYPHEN_MINUS_CHAR {
-		t.ConsumeNext()
+		t.consume_next()
 		// Append it to number part and set sign character to it.
 		number_part = append(number_part, next)
 		sign = []rune{next}
 	}
 
 	// 3. While the next input code point is a digit, consume it and append it to number part.
-	for is_digit(t.NextRune()) {
-		number_part = append(number_part, t.ConsumeNext())
+	for is_digit(t.next_rune()) {
+		number_part = append(number_part, t.consume_next())
 	}
 
 	// 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit
-	if t.NextRune() == FULL_STOP_CHAR && is_digit(t.SecondRune()) {
+	if t.next_rune() == FULL_STOP_CHAR && is_digit(t.second_rune()) {
 		// 4.1 Consume the next input code point and append it to number part.
-		number_part = append(number_part, t.ConsumeNext())
+		number_part = append(number_part, t.consume_next())
 		// 4.2 While the next input code point is a digit, consume it and append it to number part.
-		for is_digit(t.NextRune()) {
-			number_part = append(number_part, t.ConsumeNext())
+		for is_digit(t.next_rune()) {
+			number_part = append(number_part, t.consume_next())
 		}
 		// 4.3 Set type to "number".
 		type_flag = TYPE_NUMBER
@@ -1124,7 +1004,7 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 	// 5. If the next 2 or 3 input code points are U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
 	//    optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+),
 	//    followed by a digit
-	first, second, third := t.NextRune(), t.SecondRune(), t.ThirdRune()
+	first, second, third := t.next_rune(), t.second_rune(), t.third_rune()
 	lookahead := 2
 	if first == UPPER_E_CHAR || first == LOWER_E_CHAR {
 		if second == HYPHEN_MINUS_CHAR || second == PLUS_SIGN_CHAR {
@@ -1133,15 +1013,15 @@ func (t *Tokenizer) consume_number() (float64, TypeFlag, []rune) {
 
 		if (lookahead == 2 && is_digit(second)) || (lookahead == 3 && is_digit(third)) {
 			// 5.1 Consume the next input code point.
-			t.ConsumeNext()
+			t.consume_next()
 			// 5.2 If the next input code point is "+" or "-", consume it and append it to exponent part.
-			switch t.NextRune() {
+			switch t.next_rune() {
 			case PLUS_SIGN_CHAR, HYPHEN_MINUS_CHAR:
-				exponent_part = append(exponent_part, t.ConsumeNext())
+				exponent_part = append(exponent_part, t.consume_next())
 			}
 			// 5.3 While the next input code point is a digit, consume it and append it to exponent part.
-			for is_digit(t.NextRune()) {
-				exponent_part = append(exponent_part, t.ConsumeNext())
+			for is_digit(t.next_rune()) {
+				exponent_part = append(exponent_part, t.consume_next())
 			}
 			// 5.4 Set type to "number".
 			type_flag = TYPE_NUMBER
@@ -1175,15 +1055,15 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 	// Consume an ident sequence, and let string be the result.
 	str := t.consume_ident_sequence()
 	// If string’s value is an ASCII case-insensitive match for "url", and the next input code point is U+0028 LEFT PARENTHESIS ((), consume it.
-	if strings.EqualFold(string(str), "url") && t.NextRune() == OPEN_PAREN_CHAR {
-		t.ConsumeNext()
+	if strings.EqualFold(string(str), "url") && t.next_rune() == OPEN_PAREN_CHAR {
+		t.consume_next()
 		// While the next two input code points are whitespace, consume the next input code point.
-		for is_whitespace(t.NextRune()) && is_whitespace(t.SecondRune()) {
-			t.ConsumeNext()
+		for is_whitespace(t.next_rune()) && is_whitespace(t.second_rune()) {
+			t.consume_next()
 		}
 		// If the next one or two input code points are U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('),
 		// or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE (')
-		first, second := t.NextRune(), t.SecondRune()
+		first, second := t.next_rune(), t.second_rune()
 		switch {
 		case first == QUOTATION_MARK_CHAR:
 			fallthrough
@@ -1201,8 +1081,8 @@ func (t *Tokenizer) consume_ident_like_token() Token {
 	}
 
 	// Otherwise, if the next input code point is U+0028 LEFT PARENTHESIS ((), consume it.
-	if t.NextRune() == OPEN_PAREN_CHAR {
-		t.ConsumeNext()
+	if t.next_rune() == OPEN_PAREN_CHAR {
+		t.consume_next()
 		// Create a <function-token> with its value set to string and return it.
 		return Token{kind: FUNCTION_TOKEN, value: str}
 	}
@@ -1216,14 +1096,14 @@ func (t *Tokenizer) consume_url_token() Token {
 	// Returns either a <url-token> or a <bad-url-token>.
 
 	// 1. Initially create a <url-token> with its value set to the empty string.
-	token := Token{kind: URL_TOKEN, value: nil}
+	token := Token{kind: URL_TOKEN}
 	// 2. Consume as much whitespace as possible.
-	for is_whitespace(t.NextRune()) {
-		t.ConsumeNext()
+	for is_whitespace(t.next_rune()) {
+		t.consume_next()
 	}
 	// 3. Repeatedly consume the next input code point from the stream:
 	for {
-		char := t.ConsumeNext()
+		char := t.consume_next()
 		switch {
 		// U+0029 RIGHT PARENTHESIS ())
 		case char == CLOSE_PAREN_CHAR:
@@ -1231,22 +1111,22 @@ func (t *Tokenizer) consume_url_token() Token {
 			return token
 		case char == EOF_CHAR:
 			// This is a parse error. Return the <url-token>.
-			fmt.Println("Parse Error: Unexpected EOF while parsing URL")
+			fmt.Println("Parse Error: Encountered unexpected EOF while parsing URL")
 			return token
 		case is_whitespace(char):
 			// Consume as much whitespace as possible.
-			for is_whitespace(t.NextRune()) {
-				t.ConsumeNext()
+			for is_whitespace(t.next_rune()) {
+				t.consume_next()
 			}
 			// If the next input code point is U+0029 RIGHT PARENTHESIS ())
 			// or EOF, consume it and return the <url-token> (if EOF was encountered, this is a parse error);
-			switch t.NextRune() {
+			switch t.next_rune() {
 			case CLOSE_PAREN_CHAR:
-				t.ConsumeNext()
+				t.consume_next()
 				return token
 			case EOF_CHAR:
-				fmt.Println("Parse Error: Unexpected EOF while parsing URL")
-				t.ConsumeNext()
+				fmt.Println("Parse Error: Encountered unexpected EOF while parsing URL")
+				t.consume_next()
 				return token
 			// otherwise, consume the remnants of a bad url, create a <bad-url-token>, and return it.
 			default:
@@ -1256,7 +1136,7 @@ func (t *Tokenizer) consume_url_token() Token {
 		// U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('), U+0028 LEFT PARENTHESIS ((), non-printable code point
 		case char == QUOTATION_MARK_CHAR, char == APOSTROPHE_CHAR, char == OPEN_PAREN_CHAR, is_non_printable(char):
 			// This is a parse error. Consume the remnants of a bad url, create a <bad-url-token>, and return it.
-			fmt.Printf("Parse Error: Unexpected character '%x' while parsing URL\n", char)
+			fmt.Printf("Parse Error: Encountered unexpected character '%x' while parsing URL\n", char)
 			t.consume_bad_url_remnants()
 			return Token{kind: BAD_URL_TOKEN}
 		// U+005C REVERSE SOLIDUS (\)
@@ -1273,7 +1153,7 @@ func (t *Tokenizer) consume_url_token() Token {
 		// anything else
 		default:
 			// Append the current input code point to the <url-token>’s value.
-			token.value = append(token.value, t.CurrentRune())
+			token.value = append(token.value, t.current_rune())
 		}
 	}
 }
@@ -1286,7 +1166,7 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 
 	// Repeatedly consume the next input code point from the stream:
 	for {
-		char := t.ConsumeNext()
+		char := t.consume_next()
 		switch {
 		// U+0029 RIGHT PARENTHESIS ()), EOF
 		case char == CLOSE_PAREN_CHAR, char == EOF_CHAR:
@@ -1304,139 +1184,118 @@ func (t *Tokenizer) consume_bad_url_remnants() {
 	}
 }
 
-type Parser struct {
-	tokens    []Token
-	length    int
-	index     int
-	reconsume bool
+// https://infra.spec.whatwg.org/#stacks
+type Stack[T any] struct {
+	items []T
 }
 
-func NewParser(tokens []Token) *Parser {
-	return &Parser{
-		tokens:    tokens,
-		length:    len(tokens),
-		index:     -1,
-		reconsume: false,
+func NewStack[T any]() Stack[T] {
+	return Stack[T]{items: nil}
+}
+
+func (s *Stack[T]) IsEmpty() bool {
+	return len(s.items) == 0
+}
+
+func (s *Stack[T]) Push(elem T) {
+	s.items = append(s.items, elem)
+}
+
+func (s *Stack[T]) Pop() (T, bool) {
+	// To pop from a stack: if the stack is not empty, then remove its last item and return it; otherwise, return nothing.
+	var elem T
+	if s.IsEmpty() {
+		return elem, false
+	}
+
+	elem, s.items = s.items[len(s.items)-1], s.items[:len(s.items)-1]
+	return elem, true
+}
+
+// https://drafts.csswg.org/css-syntax/#parser-definitions
+// A token stream is a struct representing a stream of tokens and/or component values.
+type TokenStream struct {
+	// A list of tokens and/or component values.
+	// @NOTE: The specification assumes, for simplicity, that the input stream has been fully tokenized before parsing begins.
+	//		  However, the parsing algorithms only use one token of "lookahead", so in practice tokenization and parsing can be done in lockstep.
+	tokens []Token
+	length int
+	// An index into the tokens, representing the progress of parsing. It starts at 0 initially.
+	// @NOTE: Aside from marking, the index never goes backwards. Thus the already-processed prefix of tokens can be eagerly discarded as it’s processed.
+	index int
+	// A stack of index values, representing points that the parser might return to. It starts empty initially.
+	marked_indexes Stack[int]
+}
+
+func NewTokenStream(tokens []Token) TokenStream {
+	return TokenStream{
+		tokens:         tokens,
+		length:         len(tokens),
+		index:          0,
+		marked_indexes: NewStack[int](),
 	}
 }
 
-type ParserOutputType uint8
-
-// https://www.w3.org/TR/css-syntax-3/#parsing
-const (
-	AT_RULE ParserOutputType = iota
-	// Most qualified rules will be style rules, where the prelude is a selector [SELECT] and the block a list of declarations.
-	QUALIFIED_RULE
-	DECLARATION
-	PRESERVED_TOKEN
-	FUNCTION
-	SIMPLE_BLOCK
-)
-
-type ParserOutput struct {
-	kind ParserOutputType
-	// <at-rule>, <declaration>, <function>
-	name []rune
-	// <at-rule>, <qualified-rule>
-	prelude []ParserOutput
-	// <at-rule> (optional), <qualified-rule>
-	block *ParserOutput
-	// <declaration>, <function>, <simple-block>
-	value []ParserOutput
-	// <declaration>
-	important bool
-	// <preserved-token>, <simple-block>
-	token Token
-}
-
-func (p ParserOutput) ToString() string {
-	kind := p.kind
-
-	var type_string string
-	switch kind {
-	case AT_RULE:
-		type_string = "AT_RULE"
-	case QUALIFIED_RULE:
-		type_string = "QUALIFIED_RULE"
-	case DECLARATION:
-		type_string = "DECLARATION"
-	case PRESERVED_TOKEN:
-		type_string = "PRESERVED_TOKEN"
-	case FUNCTION:
-		type_string = "FUNCTION"
-	case SIMPLE_BLOCK:
-		type_string = "SIMPLE_BLOCK"
-	}
-
-	str := fmt.Sprintf("<%s>", type_string)
-
-	if kind == AT_RULE || kind == DECLARATION || kind == FUNCTION {
-		str = str + fmt.Sprintf(" '%s'", string(p.name))
-	}
-
-	if kind == AT_RULE || kind == QUALIFIED_RULE {
-		str = str + "\n\tprelude: ("
-		for _, item := range p.prelude {
-			str = str + fmt.Sprintf("%s, ", item.ToString())
-		}
-	}
-
-	if kind == AT_RULE || kind == QUALIFIED_RULE {
-		if p.block != nil {
-			str = str + fmt.Sprintf("\n\tblock: %s", p.block.ToString())
-		}
-	}
-
-	if kind == DECLARATION || kind == FUNCTION || kind == SIMPLE_BLOCK {
-		str = str + "\n\t\tvalue:\n"
-		for _, item := range p.value {
-			str = str + fmt.Sprintf("\t\t\t%s,\n ", item.ToString())
-		}
-	}
-
-	if kind == PRESERVED_TOKEN || kind == SIMPLE_BLOCK {
-		str = str + fmt.Sprintf(" token: %s", p.token.ToString())
-	}
-
-	return str
-}
-
-func (p *Parser) peek_token(number int) Token {
-	index := p.index + number
-	// If there isn’t a token following the current input token, the next input token is an <EOF-token>.
-	if index >= p.length {
+// https://drafts.csswg.org/css-syntax/#token-stream-next-token
+func (ts *TokenStream) next_token() Token {
+	// The item of tokens at index.
+	// If that index would be out-of-bounds past the end of the list, it’s instead an <eof-token>.
+	if ts.index >= ts.length {
 		return Token{kind: EOF_TOKEN}
 	}
 
-	return p.tokens[index]
+	return ts.tokens[ts.index]
 }
 
-// The token or component value currently being operated on, from the list of tokens produced by the tokenizer.
-func (p *Parser) CurrentToken() Token {
-	return p.peek_token(0)
+// https://drafts.csswg.org/css-syntax/#token-stream-empty
+func (ts *TokenStream) empty() bool {
+	// A token stream is empty if the next token is an <eof-token>.
+	return ts.next_token().kind == EOF_TOKEN
 }
 
-// The token or component value following the current input token in the list of tokens produced by the tokenizer.
-func (p *Parser) NextToken() Token {
-	return p.peek_token(1)
+// https://drafts.csswg.org/css-syntax/#token-stream-consume-a-token
+func (ts *TokenStream) consume_token() Token {
+	// Let token be the next token. Increment index, then return token.
+	token := ts.next_token()
+	ts.index += 1
+	return token
 }
 
-func (p *Parser) consume_token(number int) {
-	p.index += number
-}
-
-// Let the current input token be the current next input token, adjusting the next input token accordingly.
-func (p *Parser) ConsumeNext() {
-	if p.reconsume == false {
-		p.consume_token(1)
+// https://drafts.csswg.org/css-syntax/#token-stream-discard-a-token
+func (ts *TokenStream) discard_token() {
+	// If the token stream is not empty, increment index.
+	if ts.empty() == false {
+		ts.index += 1
 	}
-
-	p.reconsume = false
 }
 
-// The next time an algorithm instructs you to consume the next input token, instead do nothing (retain the current input token unchanged).
-func (p *Parser) ReconsumeCurrent() {
-	p.reconsume = true
+// https://drafts.csswg.org/css-syntax/#token-stream-mark
+func (ts *TokenStream) mark() {
+	// Append index to marked indexes.
+	ts.marked_indexes.Push(ts.index)
+}
+
+// https://drafts.csswg.org/css-syntax/#token-stream-restore-a-mark
+func (ts *TokenStream) restore_mark() {
+	// Pop from marked indexes, and set index to the popped value.
+	value, ok := ts.marked_indexes.Pop()
+	if ok {
+		ts.index = value
+	}
+}
+
+// https://drafts.csswg.org/css-syntax/#token-stream-discard-a-mark
+func (ts *TokenStream) discard_mark() {
+	// Pop from marked indexes, and do nothing with the popped value.
+	ts.marked_indexes.Pop()
+}
+
+// https://drafts.csswg.org/css-syntax/#token-stream-discard-whitespace
+func (ts *TokenStream) discard_whitespace() {
+	// While the next token is a <whitespace-token>, discard a token.
+	for ts.next_token().kind == WHITESPACE_TOKEN {
+		ts.discard_token()
+	}
 }
 
 func ParseStylesheet(input io.Reader) {
@@ -1445,67 +1304,223 @@ func ParseStylesheet(input io.Reader) {
 		log.Fatal(err)
 	}
 
-	stream := preprocess_input_stream(bytes)
-	tokenizer := NewTokenizer(stream)
+	code_points := preprocess_input_stream(bytes)
+	tokens := NewTokenizer(code_points).Tokenize()
 
-	var tokens []Token
-	for tokenizer.HasNext() {
-		token := tokenizer.ConsumeToken()
-		fmt.Println(token.ToString())
-		tokens = append(tokens, token)
+	token_stream := NewTokenStream(tokens)
+	rules := token_stream.consume_stylesheet_contents()
+
+	fmt.Println("Rules:")
+	for i, rule := range rules {
+		fmt.Printf("\t%d: %s\n", i+1, rule)
 	}
-
-	// parser := NewParser(tokens)
-	// output := parser.consume_rules_list(true)
-	// for i, elem := range output {
-	// 	fmt.Printf("[%d]: %s\n", i, elem.ToString())
-	// }
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-list-of-rules
-func (p *Parser) consume_rules_list(top_level bool) []ParserOutput {
-	// Create an initially empty list of rules.
-	var rules []ParserOutput
+// https://drafts.csswg.org/css-syntax/#css-stylesheet
+type Stylesheet struct {
+	rules []Rule
+}
 
-	// Repeatedly consume the next input token:
+// https://drafts.csswg.org/css-syntax/#css-rule
+type Rule struct {
+	kind RuleKind
+	// <at-rule>
+	name string
+	// <at-rule>, <qualified_rule>
+	prelude []ComponentValue
+	// <at-rule>, <qualified_rule>
+	decls    []Declaration
+	children []Rule
+}
+
+type RuleKind uint8
+
+// A rule is either an at-rule or a qualified rule.
+const (
+	AT_RULE RuleKind = iota
+	QUALIFIED_RULE
+)
+
+func (k RuleKind) String() string {
+	switch k {
+	case AT_RULE:
+		return "AT_RULE"
+	case QUALIFIED_RULE:
+		return "QUALIFIED_RULE"
+	}
+	return "<UNKNOWN RULE>"
+}
+
+func (r Rule) String() string {
+	var sb strings.Builder
+	sb.WriteString(r.kind.String())
+	if r.kind == AT_RULE {
+		sb.WriteString(fmt.Sprintf(" '%s'", r.name))
+	}
+
+	sb.WriteString(" PRELUDE: [")
+	for _, elem := range r.prelude {
+		sb.WriteString(fmt.Sprintf(" %s", elem.String()))
+	}
+	sb.WriteString(" ] DECLS: [")
+	for _, decl := range r.decls {
+		sb.WriteString(fmt.Sprintf(" %s", decl.String()))
+	}
+	sb.WriteString(" ]")
+
+	return sb.String()
+}
+
+func (r Rule) is_valid() bool {
+	// @TODO: implement this properly.
+	// e.g. could use https://github.com/tabatkins/parse-css/blob/0c4d5540274a9e5bcf599732a13ff7ec581264f9/parse-css.js#L1128 as reference
+	return true
+}
+
+func looks_like_custom_property(prelude []ComponentValue) bool {
+	// Return true if the first two non-<whitespace-token> values of rule’s prelude are
+	// an <ident-token> whose value starts with "--" followed by a <colon-token>
+	i := 0
+	for ; i < len(prelude); i += 1 {
+		if prelude[i].token.kind != WHITESPACE_TOKEN {
+			break
+		}
+	}
+
+	if i+1 >= len(prelude) {
+		return false
+	}
+
+	first := prelude[i].token
+	if first.kind == IDENT_TOKEN && strings.HasPrefix(string(first.value), "--") {
+		return prelude[i+1].token.kind == COLON_TOKEN
+	}
+
+	return false
+}
+
+// https://drafts.csswg.org/css-syntax/#component-value
+type ComponentValue struct {
+	kind ComponentValueKind
+	// <preserved-token>, <simple-block>
+	token Token
+	// <function>
+	name string
+	// <function>, <simple-block>
+	value []ComponentValue
+}
+
+type ComponentValueKind uint8
+
+// A component value is one of the preserved tokens, a function, or a simple block.
+const (
+	PRESERVED_TOKEN ComponentValueKind = iota
+	FUNCTION
+	SIMPLE_BLOCK
+)
+
+func (k ComponentValueKind) String() string {
+	switch k {
+	case PRESERVED_TOKEN:
+		return "PRESERVED_TOKEN"
+	case FUNCTION:
+		return "FUNCTION"
+	case SIMPLE_BLOCK:
+		return "SIMPLE_BLOCK"
+	}
+	return "<UNKNOWN COMPONENT VALUE>"
+}
+
+func (v ComponentValue) String() string {
+	var sb strings.Builder
+
+	switch v.kind {
+	case PRESERVED_TOKEN:
+		sb.WriteString(fmt.Sprintf("(%s)", v.token.String()))
+	case FUNCTION:
+		sb.WriteString(fmt.Sprintf("FUNCTION '%s'", v.name))
+	case SIMPLE_BLOCK:
+		sb.WriteString(fmt.Sprintf("(%s)", v.token.kind.String()))
+	}
+
+	return sb.String()
+}
+
+// https://drafts.csswg.org/css-syntax/#declaration
+type Declaration struct {
+	name          string
+	value         []ComponentValue
+	important     bool
+	original_text string
+}
+
+func (d Declaration) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s (", d.name))
+	for _, elem := range d.value {
+		sb.WriteString(fmt.Sprintf(" %s", elem))
+	}
+	sb.WriteString(" ]")
+
+	if d.important {
+		sb.WriteString(fmt.Sprintf(" !important"))
+	}
+
+	return sb.String()
+}
+
+func (d Declaration) is_valid() bool {
+	// @TODO: implement this properly.
+	return true
+}
+
+func is_custom_property_name(name string) bool {
+	// @TODO: implement
+	return false
+}
+
+func is_unicode_range(name string) bool {
+	// @TODO: implement
+	return false
+}
+
+func ends_with_important(list []ComponentValue) bool {
+	// @TODO: implement
+	return false
+}
+
+func contains_non_empty_block(list []ComponentValue) bool {
+	// @TODO: implement
+	return false
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-stylesheet-contents
+func (ts *TokenStream) consume_stylesheet_contents() []Rule {
+	// Let rules be an initially empty list of rules.
+	var rules []Rule
+
 	for {
-		p.ConsumeNext()
-
-		token := p.CurrentToken()
-		switch token.kind {
+		switch next := ts.next_token(); next.kind {
 		// <whitespace-token>
 		case WHITESPACE_TOKEN:
-			// Do nothing
-			continue
+			ts.discard_token()
 		// <EOF-token>
 		case EOF_TOKEN:
-			// Return the list of rules.
 			return rules
 		// <CDO-token>, <CDC-token>
-		case CDO_TOKEN:
-			fallthrough
-		case CDC_TOKEN:
-			// If the top-level flag is set, do nothing.
-			if top_level {
-				continue
-			}
-
-			// Otherwise, reconsume the current input token. Consume a qualified rule. If anything is returned, append it to the list of rules.
-			p.ReconsumeCurrent()
-			rule, ok := p.consume_qualified_rule()
-			if ok {
-				rules = append(rules, rule)
-			}
+		case CDO_TOKEN, CDC_TOKEN:
+			ts.discard_token()
 		// <at-keyword-token>
 		case AT_KEYWORD_TOKEN:
-			// Reconsume the current input token. Consume an at-rule, and append the returned value to the list of rules.
-			p.ReconsumeCurrent()
-			rules = append(rules, p.consume_at_rule())
+			// Consume an at-rule from input. If anything is returned, append it to rules.
+			rule, ok := ts.consume_at_rule_default()
+			if ok {
+				rules = append(rules, rule)
+			}
 		// anything else
 		default:
-			// Reconsume the current input token. Consume a qualified rule. If anything is returned, append it to the list of rules.
-			p.ReconsumeCurrent()
-			rule, ok := p.consume_qualified_rule()
+			// Consume a qualified rule from input. If anything is returned, append it to rules.
+			rule, ok := ts.consume_qualified_rule_default()
 			if ok {
 				rules = append(rules, rule)
 			}
@@ -1513,166 +1528,369 @@ func (p *Parser) consume_rules_list(top_level bool) []ParserOutput {
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-qualified-rule
-func (p *Parser) consume_qualified_rule() (ParserOutput, bool) {
-	// Create a new qualified rule with its prelude initially set to an empty list, and its value initially set to nothing.
-	rule := ParserOutput{kind: QUALIFIED_RULE, prelude: nil, value: nil}
-	// Repeatedly consume the next input token:
-	for {
-		p.ConsumeNext()
+// https://drafts.csswg.org/css-syntax/#consume-at-rule
+func (ts *TokenStream) consume_at_rule(nested bool) (Rule, bool) {
+	// Assert the next token is an <at-keyword> token
+	if ts.next_token().kind != AT_KEYWORD_TOKEN {
+		panic("Attempted to consume at-rule with invalid token stream state")
+	}
 
-		token := p.CurrentToken()
-		switch {
+	// Consume a token from input, and let rule be a new at-rule with its name set to the returned token’s value,
+	// its prelude initially set to an empty list, and no declarations or child rules.
+	token := ts.consume_token()
+	rule := Rule{kind: AT_RULE, name: string(token.value)}
+
+	for {
+		switch next := ts.next_token(); next.kind {
+		// <semicolon-token>, <EOF-token>
+		case SEMICOLON_TOKEN, EOF_TOKEN:
+			// Discard a token from input. If rule is valid in the current context, return it; otherwise return nothing.
+			ts.discard_token()
+			return rule, rule.is_valid()
+		// <}-token>
+		case CLOSE_CURLY_TOKEN:
+			// If nested is true
+			if nested {
+				// If rule is valid in the current context, return it; otherwise, return nothing.
+				return rule, rule.is_valid()
+			}
+			// Otherwise, consume a token and append the result to rule’s prelude.
+			component := ComponentValue{kind: PRESERVED_TOKEN, token: ts.consume_token()}
+			rule.prelude = append(rule.prelude, component)
+		// <{-token>
+		case OPEN_CURLY_TOKEN:
+			// Consume a block from input, and assign the results to rule’s lists of declarations and child rules.
+			decls, children := ts.consume_block()
+			rule.decls = decls
+			rule.children = children
+			// If rule is valid in the current context, return it. Otherwise, return nothing.
+			return rule, rule.is_valid()
+		// anything else
+		default:
+			// Consume a component value from input and append the returned value to rule’s prelude.
+			component := ts.consume_component_value()
+			rule.prelude = append(rule.prelude, component)
+		}
+	}
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-at-rule
+func (ts *TokenStream) consume_at_rule_default() (Rule, bool) {
+	return ts.consume_at_rule(false)
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-qualified-rule
+func (ts *TokenStream) consume_qualified_rule(nested bool, params ...TokenKind) (Rule, bool) {
+	// @NOTE: needed to get round Go's lack of function overloading or default parameters
+	stop_token := extract_stop_token(params)
+	// Let rule be a new qualified rule with its prelude, declarations, and child rules all initially set to empty lists.
+	rule := Rule{kind: QUALIFIED_RULE}
+
+	for {
+		switch next := ts.next_token(); next.kind {
 		// <EOF-token>
-		case token.kind == EOF_TOKEN:
+		case EOF_TOKEN, stop_token:
 			// This is a parse error. Return nothing.
-			fmt.Println("Parse Error: Unexpected EOF when parsing qualified rule")
+			fmt.Println("Parse Error: Encountered unexpected EOF or stop token while parsing qualified rule")
 			return rule, false
+		// <}-token>
+		case CLOSE_CURLY_TOKEN:
+			// This is a parse error. If nested is true, return nothing. Otherwise, consume a token and append the result to rule’s prelude.
+			fmt.Println("Parse Error: Encountered unexpected '}' while parsing qualified rule")
+			if nested {
+				return rule, false
+			}
+
+			component := ComponentValue{kind: PRESERVED_TOKEN, token: ts.consume_token()}
+			rule.prelude = append(rule.prelude, component)
 		// <{-token>
-		case token.kind == OPEN_CURLY_TOKEN:
-			// Consume a simple block and assign it to the qualified rule’s block. Return the qualified rule.
-			block := p.consume_simple_block()
-			rule.block = &block
-			return rule, true
-		// @FIXME: work out how this works
-		// simple block with an associated token of <{-token>
-		// case false:
-		// 	// Assign the block to the qualified rule’s block. Return the qualified rule.
-		// 	rule.block = 0
-		// 	return rule, true
+		case OPEN_CURLY_TOKEN:
+			// If the first two non-<whitespace-token> values of rule’s prelude are an <ident-token> whose value starts with "--"
+			// followed by a <colon-token>
+			if looks_like_custom_property(rule.prelude) {
+				// If nested is true, consume the remnants of a bad declaration from input, with nested set to true, and return nothing.
+				if nested {
+					ts.consume_bad_declaration_remnants(true)
+					return rule, false
+				}
+
+				// If nested is false, consume a block from input, and return nothing.
+				ts.consume_block()
+				return rule, false
+			} else {
+				// Otherwise, consume a block from input, and assign the results to rule’s lists of declarations and child rules.
+				decls, rules := ts.consume_block()
+				rule.decls = decls
+				rule.children = rules
+				// If rule is valid in the current context, return it; otherwise return nothing.
+				return rule, rule.is_valid()
+			}
 		// anything else
 		default:
-			// Reconsume the current input token. Consume a component value. Append the returned value to the qualified rule’s prelude.
-			p.ReconsumeCurrent()
-			rule.prelude = append(rule.prelude, p.consume_component_value())
+			// Consume a component value from input and append the result to rule’s prelude.
+			rule.prelude = append(rule.prelude, ts.consume_component_value())
 		}
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-at-rule
-func (p *Parser) consume_at_rule() ParserOutput {
-	// Consume the next input token.
-	p.ConsumeNext()
-	// Create a new at-rule with its name set to the value of the current input token,
-	// its prelude initially set to an empty list, and its value initially set to nothing.
-	rule := ParserOutput{kind: AT_RULE, name: p.CurrentToken().value, prelude: nil, value: nil}
+func (ts *TokenStream) consume_qualified_rule_default(params ...TokenKind) (Rule, bool) {
+	return ts.consume_qualified_rule(false, params...)
+}
 
-	// Repeatedly consume the next input token:
+// https://drafts.csswg.org/css-syntax/#consume-block
+func (ts *TokenStream) consume_block() ([]Declaration, []Rule) {
+	// Assert the next token is an <open-curly> token
+	if ts.next_token().kind != OPEN_CURLY_TOKEN {
+		panic("Attempted to consume block with invalid token stream state")
+	}
+	// Let decls be an empty list of declarations, and rules be an empty list of rules.
+	var decls []Declaration
+	var rules []Rule
+
+	// Discard a token from input. Consume a block’s contents from input and assign the results to decls and rules. Discard a token from input.
+	ts.discard_token()
+	decls, rules = ts.consume_block_contents()
+	ts.discard_token()
+	// Return decls and rules.
+	return decls, rules
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-block-contents
+func (ts *TokenStream) consume_block_contents() ([]Declaration, []Rule) {
+	// Let decls be an empty list of declarations, and rules be an empty list of rules.
+	var decls []Declaration
+	var rules []Rule
+
 	for {
-		p.ConsumeNext()
-
-		token := p.CurrentToken()
-		switch {
-		// <semicolon-token>
-		case token.kind == SEMICOLON_TOKEN:
-			// Return the at-rule.
-			return rule
-		// <EOF-token>
-		case token.kind == EOF_TOKEN:
-			// This is a parse error. Return the at-rule.
-			fmt.Println("Parse Error: Unexpected EOF when parsing at rule")
-			return rule
-		// <{-token>
-		case token.kind == OPEN_CURLY_TOKEN:
-			// Consume a simple block and assign it to the at-rule’s block. Return the at-rule.
-			block := p.consume_simple_block()
-			rule.block = &block
-			return rule
-		// @FIXME: work out how this works
-		// simple block with an associated token of <{-token>
-		// case false:
-		// 	// Assign the block to the at-rule’s block. Return the at-rule.
-		// 	rule.block = 0
-		// 	return rule
+		switch next := ts.next_token(); next.kind {
+		// <whitespace-token>, <semicolon-token>
+		case WHITESPACE_TOKEN, SEMICOLON_TOKEN:
+			// Discard a token from input.
+			ts.discard_token()
+		// <EOF-token>, <}-token>
+		case EOF_TOKEN, CLOSE_CURLY_TOKEN:
+			// Return decls and rules.
+			return decls, rules
+		// <at-keyword-token>
+		case AT_KEYWORD_TOKEN:
+			// Consume an at-rule from input, with nested set to true. If a rule was returned, append it to rules.
+			rule, ok := ts.consume_at_rule(true)
+			if ok {
+				rules = append(rules, rule)
+			}
 		// anything else
 		default:
-			// Reconsume the current input token. Consume a component value. Append the returned value to the at-rule’s prelude.
-			p.ReconsumeCurrent()
-			rule.prelude = append(rule.prelude, p.consume_component_value())
+			// @TODO: see note about parsing efficiency
+			// Mark input.
+			ts.mark()
+			// Consume a declaration from input, with nested set to true.
+			decl, ok := ts.consume_declaration(true)
+			// If a declaration was returned, append it to decls, and discard a mark from input.
+			if ok {
+				decls = append(decls, decl)
+				ts.discard_mark()
+			} else {
+				// Otherwise, restore a mark from input, then consume a qualified rule from input, with nested set to true, and <semicolon-token> as the stop token.
+				ts.restore_mark()
+				rule, ok := ts.consume_qualified_rule(true, SEMICOLON_TOKEN)
+				// If a rule was returned, append it to rules.
+				if ok {
+					rules = append(rules, rule)
+				}
+			}
 		}
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-simple-block
-func (p *Parser) consume_simple_block() ParserOutput {
-	// @ASSERTION: This algorithm assumes that the current input token has already been checked to be an <{-token>, <[-token>, or <(-token>.
+func (ts *TokenStream) consume_declaration(nested bool) (Declaration, bool) {
+	// Let decl be a new declaration, with an initially empty name and a value set to an empty list.
+	decl := Declaration{}
+	// 1. If the next token is an <ident-token>, consume a token from input and set decl’s name to the token’s value.
+	if ts.next_token().kind == IDENT_TOKEN {
+		decl.name = string(ts.consume_token().value)
+	} else {
+		// Otherwise, consume the remnants of a bad declaration from input, with nested, and return nothing.
+		ts.consume_bad_declaration_remnants(nested)
+		return decl, false
+	}
+	// 2. Discard whitespace from input.
+	ts.discard_whitespace()
+	// 3. If the next token is a <colon-token>, discard a token from input.
+	if ts.next_token().kind == COLON_TOKEN {
+		ts.discard_token()
+	} else {
+		// Otherwise, consume the remnants of a bad declaration from input, with nested, and return nothing.
+		ts.consume_bad_declaration_remnants(nested)
+		return decl, false
+	}
+	// 4. Discard whitespace from input.
+	ts.discard_whitespace()
+	// 5. Consume a list of component values from input, with nested, and with <semicolon-token> as the stop token, and set decl’s value to the result.
+	decl.value = ts.consume_component_value_list(nested, SEMICOLON_TOKEN)
+	// 6. If the last two non-<whitespace-token>s in decl’s value are a <delim-token> with the value "!"
+	// followed by an <ident-token> with a value that is an ASCII case-insensitive match for "important",
+	// remove them from decl’s value and set decl’s important flag.
+	if ends_with_important(decl.value) {
+		decl.value = decl.value[:len(decl.value)-2]
+		decl.important = true
+	}
+	// 7. While the last item in decl’s value is a <whitespace-token>, remove that token.
+	for len(decl.value) > 0 && decl.value[len(decl.value)-1].token.kind == WHITESPACE_TOKEN {
+		decl.value = decl.value[:len(decl.value)-1]
+	}
+	// 8. If decl’s name is a custom property name string, then set decl’s original text to the segment of the original source text string corresponding to the tokens of decl’s value.
+	if is_custom_property_name(decl.name) {
+		// @TODO
+	} else if contains_non_empty_block(decl.value) {
+		// Otherwise, if decl’s value contains a top-level simple block with an associated token of <{-token>, and also contains any other non-<whitespace-token> value, return nothing.
+		// (That is, a top-level {}-block is only allowed as the entire value of a non-custom property.)
+		return decl, false
+	} else if is_unicode_range(decl.name) {
+		// Otherwise, if decl’s name is an ASCII case-insensitive match for "unicode-range",
+		// consume the value of a unicode-range descriptor from the segment of the original source text string corresponding to the tokens returned by the consume a list of component values call,
+		// and replace decl’s value with the result.
+		// @TODO: We currently do not support unicode ranges
+		panic("Parse Error: Unicode Ranges are currently not supported")
+	}
+	// 9. If decl is valid in the current context, return it; otherwise return nothing.
+	return decl, decl.is_valid()
+}
 
-	current := p.CurrentToken()
-	// The ending token is the mirror variant of the current input token. (E.g. if it was called with <[-token>, the ending token is <]-token>.)
-	ending_type := mirror(current.kind)
-	// Create a simple block with its associated token set to the current input token and with its value initially set to an empty list.
-	block := ParserOutput{kind: SIMPLE_BLOCK, token: current, value: nil}
-	// Repeatedly consume the next input token and process it as follows:
+func (ts *TokenStream) consume_bad_declaration_remnants(nested bool) {
 	for {
-		p.ConsumeNext()
+		switch next := ts.next_token(); next.kind {
+		// <eof-token>, <semicolon-token>
+		case EOF_TOKEN, SEMICOLON_TOKEN:
+			// Discard a token from input, and return nothing.
+			ts.discard_token()
+			return
+		// <}-token>
+		case CLOSE_CURLY_TOKEN:
+			// If nested is true, return nothing. Otherwise, discard a token.
+			if nested {
+				return
+			} else {
+				ts.discard_token()
+			}
+		// anything else
+		default:
+			// Consume a component value from input, and do nothing.
+			ts.consume_component_value()
+		}
+	}
+}
 
-		token := p.CurrentToken()
-		switch token.kind {
-		// ending token
-		case ending_type:
-			// Return the block.
+// https://drafts.csswg.org/css-syntax/#consume-list-of-components
+func (ts *TokenStream) consume_component_value_list(nested bool, params ...TokenKind) []ComponentValue {
+	// @NOTE: needed to get round Go's lack of function overloading or default parameters
+	stop_token := extract_stop_token(params)
+	// Let values be an empty list of component values.
+	var values []ComponentValue
+
+	for {
+		switch next := ts.next_token(); next.kind {
+		// <eof-token>, stop token
+		case EOF_TOKEN, stop_token:
+			return values
+		// <}-token>
+		case CLOSE_CURLY_TOKEN:
+			// If nested is true, return values.
+			if nested {
+				return values
+			}
+			// Otherwise, this is a parse error. Consume a token from input and append the result to values.
+			fmt.Println("Parse Error: Encountered unexpected '}' while parsing component value list")
+			component := ts.consume_component_value()
+			values = append(values, component)
+		// anything else
+		default:
+			// Consume a component value from input, and append the result to values.
+			component := ts.consume_component_value()
+			values = append(values, component)
+		}
+	}
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-component-value
+func (ts *TokenStream) consume_component_value() ComponentValue {
+	for {
+		switch next := ts.next_token(); next.kind {
+		// <{-token>, <[-token>, <(-token>
+		case OPEN_CURLY_TOKEN, OPEN_SQUARE_TOKEN, OPEN_PAREN_TOKEN:
+			// Consume a simple block from input and return the result.
+			return ts.consume_simple_block()
+		// <function-token>
+		case FUNCTION_TOKEN:
+			// Consume a function from input and return the result.
+			return ts.consume_function()
+		// anything else
+		default:
+			// Consume a token from input and return the result.
+			return ComponentValue{kind: PRESERVED_TOKEN, token: ts.consume_token()}
+		}
+	}
+}
+
+// https://drafts.csswg.org/css-syntax/#consume-simple-block
+func (ts *TokenStream) consume_simple_block() ComponentValue {
+	// Assert: the next token of input is <{-token>, <[-token>, or <(-token>.
+	next := ts.next_token()
+	if next.kind != OPEN_CURLY_TOKEN && next.kind != OPEN_SQUARE_TOKEN && next.kind != OPEN_PAREN_TOKEN {
+		panic("Attempted to consume simple block with invalid token stream state")
+	}
+
+	// Let ending token be the mirror variant of the next token. (E.g. if it was called with <[-token>, the ending token is <]-token>.)
+	ending_token := mirror(next.kind)
+	// Let block be a new simple block with its associated token set to the next token and with its value initially set to an empty list.
+	block := ComponentValue{kind: SIMPLE_BLOCK, token: next}
+	// Discard a token from input.
+	ts.discard_token()
+
+	for {
+		switch next = ts.next_token(); next.kind {
+		// <eof-token>, ending token
+		case EOF_TOKEN, ending_token:
+			// Discard a token from input. Return block.
+			ts.discard_token()
 			return block
-		// <EOF-token>
-		case EOF_TOKEN:
-			// This is a parse error. Return the block.
-			fmt.Println("Parse Error: Unexpected EOF when parsing simple block")
-			return block
 		// anything else
 		default:
-			// Reconsume the current input token. Consume a component value and append it to the value of the block.
-			p.ReconsumeCurrent()
-			block.value = append(block.value, p.consume_component_value())
+			// Consume a component value from input and append the result to block’s value.
+			block.value = append(block.value, ts.consume_component_value())
 		}
 	}
 }
 
-// https://www.w3.org/TR/css-syntax-3/#consume-component-value
-func (p *Parser) consume_component_value() ParserOutput {
-	// Consume the next input token.
-	p.ConsumeNext()
-	// If the current input token is a <{-token>, <[-token>, or <(-token>, consume a simple block and return it.
-	switch p.CurrentToken().kind {
-	case OPEN_CURLY_TOKEN:
-		fallthrough
-	case OPEN_SQUARE_TOKEN:
-		fallthrough
-	case OPEN_PAREN_TOKEN:
-		return p.consume_simple_block()
-	// Otherwise, if the current input token is a <function-token>, consume a function and return it.
-	case FUNCTION_TOKEN:
-		return p.consume_function()
-	// Otherwise, return the current input token.
-	default:
-		return ParserOutput{kind: PRESERVED_TOKEN, token: p.CurrentToken()}
+// https://drafts.csswg.org/css-syntax/#consume-function
+func (ts *TokenStream) consume_function() ComponentValue {
+	// Assert: The next token is a <function-token>.
+	if ts.next_token().kind != FUNCTION_TOKEN {
+		panic("Attempted to consume function with invalid token stream state")
 	}
-}
 
-// https://www.w3.org/TR/css-syntax-3/#consume-function
-func (p *Parser) consume_function() ParserOutput {
-	// @ASSERTION: This algorithm assumes that the current input token has already been checked to be a <function-token>.
+	// Consume a token from input, and let function be a new function with its name equal the returned token’s value, and a value set to an empty list.
+	token := ts.consume_token()
+	function := ComponentValue{kind: FUNCTION, name: string(token.value)}
 
-	// Create a function with its name equal to the value of the current input token and with its value initially set to an empty list.
-	function := ParserOutput{kind: FUNCTION, name: p.CurrentToken().value, value: nil}
-	// Repeatedly consume the next input token
 	for {
-		p.ConsumeNext()
-
-		token := p.CurrentToken()
-		switch token.kind {
-		// <)-token>
-		case CLOSE_PAREN_TOKEN:
-			// Return the function.
-			return function
-		// <EOF-token>
-		case EOF_TOKEN:
-			// This is a parse error. Return the function.
-			fmt.Println("Parse Error: Unexpected EOF when parsing function")
+		switch next := ts.next_token(); next.kind {
+		// <eof-token>, <)-token>
+		case EOF_TOKEN, CLOSE_PAREN_TOKEN:
+			// Discard a token from input. Return function.
+			ts.discard_token()
 			return function
 		// anything else
 		default:
-			// Reconsume the current input token. Consume a component value and append the returned value to the function’s value.
-			p.ReconsumeCurrent()
-			function.value = append(function.value, p.consume_component_value())
+			// Consume a component value from input and append the result to function’s value.
+			function.value = append(function.value, ts.consume_component_value())
 		}
 	}
+}
+
+func extract_stop_token(params []TokenKind) TokenKind {
+	if len(params) > 0 {
+		return params[0]
+	}
+
+	return EOF_TOKEN
 }

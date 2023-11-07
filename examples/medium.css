@@ -1,7 +1,7 @@
 @import url("https://www.example.com/style.css");
 
 #selector {
-    height: 100px;
+    height: 1e2rem;
     width: 58.75%;
     /* Hello Mum */
     display: flex;
