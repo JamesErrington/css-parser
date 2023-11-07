@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -72,6 +73,10 @@ const (
 	AT_CHAR                    rune = '\u0040'
 )
 
+const (
+	OUTPUT_DIR = "output"
+)
+
 func main() {
 	args := os.Args[1:]
 	if len(args) < 1 {
@@ -85,7 +90,15 @@ func main() {
 	defer file.Close()
 
 	sheet := parse_stylesheet(file)
-	fmt.Println(sheet.Stringify())
+
+	out_file, err := os.Create(OUTPUT_DIR + "/" + filepath.Base(file.Name()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer out_file.Close()
+
+	str := sheet.Stringify()
+	out_file.WriteString(str)
 }
 
 // https://drafts.csswg.org/css-syntax/#input-preprocessing
@@ -1503,7 +1516,7 @@ func ends_with_important(list []ComponentValue) bool {
 	}
 	// Check the two tokens for the match
 	second_last, last := list[i-1], list[i]
-	if second_last.token.kind == DELIM_TOKEN && string(second_last.token.value) == "!" {
+	if second_last.token.kind == DELIM_TOKEN && second_last.token.value[0] == EXCLAMATON_MARK_CHAR {
 		return last.token.kind == IDENT_TOKEN && strings.EqualFold(string(last.token.value), "important")
 	}
 
@@ -1921,7 +1934,6 @@ func (s Stylesheet) Stringify() string {
 
 	for _, rule := range s.rules {
 		stringify_rule(&sb, rule)
-		sb.WriteRune(LINE_FEED_CHAR)
 	}
 
 	return sb.String()
@@ -1931,12 +1943,21 @@ func stringify_rule(sb *strings.Builder, rule Rule) {
 	if rule.kind == AT_RULE {
 		sb.WriteString(fmt.Sprintf("%c%s", AT_CHAR, rule.name))
 		stringify_component_value_list(sb, rule.prelude)
-		sb.WriteRune(SEMICOLON_CHAR)
+
+		if len(rule.children) > 0 {
+			sb.WriteString(fmt.Sprintf("%c%c", OPEN_CURLY_CHAR, LINE_FEED_CHAR))
+			for _, child_rule := range rule.children {
+				stringify_rule(sb, child_rule)
+			}
+			sb.WriteString(fmt.Sprintf("%c%c", CLOSE_CURLY_CHAR, LINE_FEED_CHAR))
+		} else {
+			sb.WriteRune(SEMICOLON_CHAR)
+		}
+
 	} else {
 		stringify_component_value_list(sb, rule.prelude)
 		sb.WriteString(fmt.Sprintf("%c%c", OPEN_CURLY_CHAR, LINE_FEED_CHAR))
 		for _, decl := range rule.decls {
-			sb.WriteString(fmt.Sprintf("%c%c", SPACE_CHAR, SPACE_CHAR))
 			stringify_declaration(sb, decl)
 			sb.WriteRune(LINE_FEED_CHAR)
 		}
@@ -1980,6 +2001,12 @@ func stringify_preserved_token(sb *strings.Builder, token Token) {
 		sb.WriteRune(OPEN_SQUARE_CHAR)
 	case CLOSE_SQUARE_TOKEN:
 		sb.WriteRune(CLOSE_SQUARE_CHAR)
+	case OPEN_PAREN_TOKEN:
+		sb.WriteRune(OPEN_PAREN_CHAR)
+	case CLOSE_PAREN_TOKEN:
+		sb.WriteRune(CLOSE_PAREN_CHAR)
+	case COLON_TOKEN:
+		sb.WriteRune(COLON_CHAR)
 	}
 }
 
