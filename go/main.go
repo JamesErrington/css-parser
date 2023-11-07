@@ -1485,7 +1485,30 @@ func is_unicode_range(name string) bool {
 }
 
 func ends_with_important(list []ComponentValue) bool {
-	// @TODO: implement
+	// Return true if the last two non-<whitespace-token>s are a <delim-token> with the value "!"
+	// followed by an <ident-token> with a value that is an ASCII case-insensitive match for "important"
+
+	// If we have less than 2 tokens, we can't be !important
+	if len(list) < 2 {
+		return false
+	}
+	// Iterate backwards through the list until we find the first non-whitespace token
+	i := len(list) - 1
+	for ; i > 0; i -= 1 {
+		if list[i].token.kind != WHITESPACE_TOKEN {
+			break
+		}
+	}
+	// Check that we have another token behind us
+	if i < 1 {
+		return false
+	}
+	// Check the two tokens for the match
+	second_last, last := list[i-1], list[i]
+	if second_last.token.kind == DELIM_TOKEN && string(second_last.token.value) == "!" {
+		return last.token.kind == IDENT_TOKEN && strings.EqualFold(string(last.token.value), "important")
+	}
+
 	return false
 }
 
@@ -1728,8 +1751,8 @@ func (ts *TokenStream) consume_declaration(nested bool) (Declaration, bool) {
 	// 5. Consume a list of component values from input, with nested, and with <semicolon-token> as the stop token, and set decl’s value to the result.
 	decl.value = ts.consume_component_value_list(nested, SEMICOLON_TOKEN)
 	// 6. If the last two non-<whitespace-token>s in decl’s value are a <delim-token> with the value "!"
-	// followed by an <ident-token> with a value that is an ASCII case-insensitive match for "important",
-	// remove them from decl’s value and set decl’s important flag.
+	//    followed by an <ident-token> with a value that is an ASCII case-insensitive match for "important",
+	//    remove them from decl’s value and set decl’s important flag.
 	if ends_with_important(decl.value) {
 		decl.value = decl.value[:len(decl.value)-2]
 		decl.important = true
