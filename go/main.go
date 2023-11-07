@@ -84,7 +84,8 @@ func main() {
 	}
 	defer file.Close()
 
-	ParseStylesheet(file)
+	sheet := parse_stylesheet(file)
+	fmt.Println(sheet.Stringify())
 }
 
 // https://drafts.csswg.org/css-syntax/#input-preprocessing
@@ -1298,7 +1299,7 @@ func (ts *TokenStream) discard_whitespace() {
 	}
 }
 
-func ParseStylesheet(input io.Reader) {
+func parse_stylesheet(input io.Reader) Stylesheet {
 	bytes, err := io.ReadAll(input)
 	if err != nil {
 		log.Fatal(err)
@@ -1310,10 +1311,7 @@ func ParseStylesheet(input io.Reader) {
 	token_stream := NewTokenStream(tokens)
 	rules := token_stream.consume_stylesheet_contents()
 
-	fmt.Println("Rules:")
-	for i, rule := range rules {
-		fmt.Printf("\t%d: %s\n", i+1, rule)
-	}
+	return Stylesheet{rules: rules}
 }
 
 // https://drafts.csswg.org/css-syntax/#css-stylesheet
@@ -1916,4 +1914,105 @@ func extract_stop_token(params []TokenKind) TokenKind {
 	}
 
 	return EOF_TOKEN
+}
+
+func (s Stylesheet) Stringify() string {
+	var sb strings.Builder
+
+	for _, rule := range s.rules {
+		stringify_rule(&sb, rule)
+		sb.WriteRune(LINE_FEED_CHAR)
+	}
+
+	return sb.String()
+}
+
+func stringify_rule(sb *strings.Builder, rule Rule) {
+	if rule.kind == AT_RULE {
+		sb.WriteString(fmt.Sprintf("%c%s", AT_CHAR, rule.name))
+		stringify_component_value_list(sb, rule.prelude)
+		sb.WriteRune(SEMICOLON_CHAR)
+	} else {
+		stringify_component_value_list(sb, rule.prelude)
+		sb.WriteString(fmt.Sprintf("%c%c", OPEN_CURLY_CHAR, LINE_FEED_CHAR))
+		for _, decl := range rule.decls {
+			sb.WriteString(fmt.Sprintf("%c%c", SPACE_CHAR, SPACE_CHAR))
+			stringify_declaration(sb, decl)
+			sb.WriteRune(LINE_FEED_CHAR)
+		}
+		sb.WriteString(fmt.Sprintf("%c%c", CLOSE_CURLY_CHAR, LINE_FEED_CHAR))
+	}
+}
+
+func stringify_declaration(sb *strings.Builder, decl Declaration) {
+	sb.WriteString(fmt.Sprintf("%s%c%c", decl.name, COLON_CHAR, SPACE_CHAR))
+	stringify_component_value_list(sb, decl.value)
+
+	if decl.important {
+		sb.WriteString(fmt.Sprintf("%c%s", SPACE_CHAR, "!important"))
+	}
+	sb.WriteRune(SEMICOLON_CHAR)
+}
+
+func stringify_preserved_token(sb *strings.Builder, token Token) {
+	switch token.kind {
+	case IDENT_TOKEN, DELIM_TOKEN:
+		sb.WriteString(string(token.value))
+	case STRING_TOKEN:
+		sb.WriteString(fmt.Sprintf("%c%s%c", QUOTATION_MARK_CHAR, string(token.value), QUOTATION_MARK_CHAR))
+	case DIMENSION_TOKEN:
+		stringify_numeric(sb, token)
+		sb.WriteString(string(token.unit))
+	case WHITESPACE_TOKEN:
+		sb.WriteRune(SPACE_CHAR)
+	case NUMBER_TOKEN:
+		stringify_numeric(sb, token)
+	case HASH_TOKEN:
+		sb.WriteString(fmt.Sprintf("%c%s", NUMBER_SIGN_CHAR, string(token.value)))
+	case URL_TOKEN:
+		sb.WriteString(fmt.Sprintf("url%c%s%c", OPEN_PAREN_CHAR, string(token.value), CLOSE_PAREN_CHAR))
+	case COMMA_TOKEN:
+		sb.WriteRune(COMMA_CHAR)
+	case PERCENTAGE_TOKEN:
+		stringify_numeric(sb, token)
+		sb.WriteRune(PERCENT_SIGN_CHAR)
+	case OPEN_SQUARE_TOKEN:
+		sb.WriteRune(OPEN_SQUARE_CHAR)
+	case CLOSE_SQUARE_TOKEN:
+		sb.WriteRune(CLOSE_SQUARE_CHAR)
+	}
+}
+
+func stringify_numeric(sb *strings.Builder, token Token) {
+	if token.type_flag == TYPE_INTEGER {
+		sb.WriteString(fmt.Sprintf("%d", int(token.numeric)))
+	} else {
+		sb.WriteString(fmt.Sprintf("%f", token.numeric))
+	}
+}
+
+func stringify_function(sb *strings.Builder, function ComponentValue) {
+	sb.WriteString(fmt.Sprintf("%s%c", function.name, OPEN_PAREN_CHAR))
+	for _, func_value := range function.value {
+		switch func_value.kind {
+		case PRESERVED_TOKEN:
+			stringify_preserved_token(sb, func_value.token)
+		}
+	}
+	sb.WriteRune(CLOSE_PAREN_CHAR)
+}
+
+func stringify_component_value_list(sb *strings.Builder, list []ComponentValue) {
+	for _, elem := range list {
+		switch elem.kind {
+		case FUNCTION:
+			stringify_function(sb, elem)
+		case PRESERVED_TOKEN:
+			stringify_preserved_token(sb, elem.token)
+		case SIMPLE_BLOCK:
+			stringify_preserved_token(sb, elem.token)
+			stringify_component_value_list(sb, elem.value)
+			stringify_preserved_token(sb, Token{kind: mirror(elem.token.kind)})
+		}
+	}
 }
